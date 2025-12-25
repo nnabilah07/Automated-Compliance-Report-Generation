@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homeowner Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <!-- Header -->
+    <div class="header">
+        <div>
+            <h1>Homeowner <span>Defect Dashboard</span></h1>
+            <label>Select Role:
+                <select onchange="changeRole(this)">
+                    <option selected>Homeowner</option>
+                    <option>Legal</option>
+                    <option>Developer</option>
+                </select>
+            </label>
+            <p style="color:#aaa;">Logged in as:
+                <strong style="color:white">Homeowner</strong>
+            </p>
+        </div>
+
+        <div class="buttons">
+            <button id="generate-btn" class="btn btn-primary"
+                    onclick="generateReport(this)">
+                Generate Claim Report
+            </button>
+
+            <form action="{{ url_for('export_pdf') }}" method="POST" style="display:inline;">
+                <input type="hidden" name="role" value="Homeowner">
+                <button id="export-btn" class="btn btn-success" disabled>
+                    Export PDF
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card status-total">
+            <div class="stat-number">{{ stats.total }}</div>
+            <div class="stat-label">Reported Defects</div>
+        </div>
+        <div class="stat-card status-pending">
+            <div class="stat-number">{{ stats.pending }}</div>
+            <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card status-completed">
+            <div class="stat-number">{{ stats.completed }}</div>
+            <div class="stat-label">Completed</div>
+        </div>
+    </div>
+
+    <!-- Report Preview -->
+    <div id="report-output" style="display:none;">
+        <h2>Report Preview</h2>
+        <pre id="report-json"></pre>
+    </div>
+
+    <!-- Defects Table -->
+    <div class="card">
+        <h2>My Reported Defects</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Unit</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Remark</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for defect in defects %}
+                <tr>
+                    <td>#{{ defect.id }}</td>
+                    <td>{{ defect.unit }}</td>
+                    <td>{{ defect.desc }}</td>
+                    <td>
+                        <span class="badge {{ 'status-completed' if defect.status=='Completed' else 'status-pending' }}">
+                            {{ defect.status }}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-ai"
+                                onclick="addRemark({{ defect.id }})">
+                            Add Note
+                        </button>
+                        <div id="remark-{{ defect.id }}" class="ai-narrative-block"></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- Note Modal -->
+<div id="remark-modal" class="modal-overlay">
+    <div class="modal-content">
+        <h2>Add Personal Remark</h2>
+        <p>Defect #<strong id="modal-defect-id"></strong></p>
+        <textarea id="remark-textarea" placeholder="Enter your note..."></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeRemarkModal()">Cancel</button>
+            <button id="confirm-remark-btn" class="btn btn-primary">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Legal Compliance Dashboard</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <div>
+            <h1>Full <span>Compliance Dashboard</span></h1>
+            <label>Select Role:
+                <select onchange="changeRole(this)">
+                    <option selected>Legal</option>
+                    <option>Homeowner</option>
+                    <option>Developer</option>
+                </select>
+            </label>
+            <p style="color:#aaa;">Logged in as: <strong style="color:white">Legal</strong></p>
+        </div>
+        <div class="buttons">
+            <button class="btn btn-primary" onclick="generateReport(this)">
+                Generate Full Compliance Report
+            </button>
+            <form action="{{ url_for('export_pdf') }}" method="POST" style="display:inline;">
+                <input type="hidden" name="role" value="Legal">
+                <button class="btn btn-success" id="export-btn" disabled>
+                    Export PDF
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card status-total">
+            <div class="stat-number">{{ stats.total }}</div>
+            <div class="stat-label">Total Defects</div>
+        </div>
+        <div class="stat-card status-pending">
+            <div class="stat-number">{{ stats.pending }}</div>
+            <div class="stat-label">Pending Compliance</div>
+        </div>
+        <div class="stat-card status-completed">
+            <div class="stat-number">{{ stats.completed }}</div>
+            <div class="stat-label">Resolved</div>
+        </div>
+    </div>
+
+    <div id="report-output" style="display:none;">
+        <h2>Report Preview</h2>
+        <pre id="report-json"></pre>
+    </div>
+
+    <div class="card">
+        <h2>Compliance Overview (Read-Only)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Unit</th>
+                    <th>Defect Description</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for defect in defects %}
+                <tr>
+                    <td>#{{ defect.id }}</td>
+                    <td>{{ defect.unit }}</td>
+                    <td>{{ defect.desc }}</td>
+                    <td>
+                        <span class="badge {{ 'status-completed' if defect.status=='Completed' else 'status-pending' }}">
+                            {{ defect.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
