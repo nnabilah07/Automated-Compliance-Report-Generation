@@ -2,31 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Legal Compliance Dashboard</title>
+<title>{{ role }} Compliance Dashboard</title>
+
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
 <div class="container">
 
+    <!-- ================= HEADER ================= -->
     <div class="header">
         <div>
             <h1>Full <span>Compliance Dashboard</span></h1>
+
             <label>Select Role:
                 <select onchange="changeRole(this)">
-                    <option selected>Legal</option>
-                    <option>Homeowner</option>
-                    <option>Developer</option>
+                    <option value="Legal" {{ 'selected' if role=='Legal' }}>Legal</option>
+                    <option value="Homeowner" {{ 'selected' if role=='Homeowner' }}>Homeowner</option>
+                    <option value="Developer" {{ 'selected' if role=='Developer' }}>Developer</option>
                 </select>
             </label>
-            <p style="color:#aaa;">Logged in as: <strong style="color:white">Legal</strong></p>
+
+            <p style="color:#aaa;">
+                Logged in as:
+                <strong style="color:white">{{ role }}</strong>
+            </p>
         </div>
+
         <div class="buttons">
-            <button class="btn btn-primary" onclick="generateReport(this)">
+            <!-- ✅ AI REPORT GENERATION -->
+            <button class="btn btn-primary" onclick="generateReport()">
                 Generate Full Compliance Report
             </button>
-            <form action="{{ url_for('export_pdf') }}" method="POST" style="display:inline;">
-                <input type="hidden" name="role" value="Legal">
+
+            <form action="{{ url_for('routes.export_pdf') }}" method="POST" style="display:inline;">
+                <input type="hidden" name="role" value="{{ role }}">
                 <button class="btn btn-success" id="export-btn" disabled>
                     Export PDF
                 </button>
@@ -34,28 +45,43 @@
         </div>
     </div>
 
+    <!-- ================= STATS ================= -->
     <div class="stats-grid">
         <div class="stat-card status-total">
             <div class="stat-number">{{ stats.total }}</div>
             <div class="stat-label">Total Defects</div>
         </div>
+
         <div class="stat-card status-pending">
             <div class="stat-number">{{ stats.pending }}</div>
             <div class="stat-label">Pending Compliance</div>
         </div>
+
         <div class="stat-card status-completed">
             <div class="stat-number">{{ stats.completed }}</div>
             <div class="stat-label">Resolved</div>
         </div>
     </div>
 
+    <!-- ================= AI REPORT PREVIEW ================= -->
     <div id="report-output" style="display:none;">
-        <h2>Report Preview</h2>
+        <h2>AI Report Preview</h2>
+
+        <div class="report-meta">
+            <small>
+                Generated on:
+                <span id="timestamp-placeholder"></span>
+                | AI-assisted compliance summary
+            </small>
+        </div>
+
         <pre id="report-json"></pre>
     </div>
 
+    <!-- ================= READ-ONLY TABLE ================= -->
     <div class="card">
         <h2>Compliance Overview (Read-Only)</h2>
+
         <table>
             <thead>
                 <tr>
@@ -65,6 +91,7 @@
                     <th>Status</th>
                 </tr>
             </thead>
+
             <tbody>
                 {% for defect in defects %}
                 <tr>
@@ -72,7 +99,9 @@
                     <td>{{ defect.unit }}</td>
                     <td>{{ defect.desc }}</td>
                     <td>
-                        <span class="badge {{ 'status-completed' if defect.status=='Completed' else 'status-pending' }}">
+                        <span class="badge
+                            {{ 'status-completed' if defect.status=='Completed'
+                               else 'status-pending' }}">
                             {{ defect.status }}
                         </span>
                     </td>
@@ -85,5 +114,25 @@
 </div>
 
 <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+
+<script>
+function changeRole(select) {
+    window.location.href = "/?role=" + select.value;
+}
+
+/* AI REPORT GENERATION HOOK */
+function generateReport() {
+    // Show report preview
+    document.getElementById("report-output").style.display = "block";
+
+    // Add timestamp
+    document.getElementById("timestamp-placeholder").innerText =
+        new Date().toLocaleString();
+
+    // Enable Export PDF button
+    document.getElementById("export-btn").disabled = false;
+}
+</script>
+
 </body>
 </html>

@@ -3,69 +3,85 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Homeowner Dashboard</title>
+
+<title>{{ role }} Dashboard</title>
+
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
 <div class="container">
 
-    <!-- Header -->
+    <!-- ================= HEADER ================= -->
     <div class="header">
         <div>
-            <h1>Homeowner <span>Defect Dashboard</span></h1>
+            <h1>{{ role }} <span>Defect Dashboard</span></h1>
+
             <label>Select Role:
                 <select onchange="changeRole(this)">
-                    <option selected>Homeowner</option>
-                    <option>Legal</option>
-                    <option>Developer</option>
+                    <option value="Homeowner" {{ 'selected' if role=='Homeowner' }}>Homeowner</option>
+                    <option value="Legal" {{ 'selected' if role=='Legal' }}>Legal</option>
+                    <option value="Developer" {{ 'selected' if role=='Developer' }}>Developer</option>
                 </select>
             </label>
-            <p style="color:#aaa;">Logged in as:
-                <strong style="color:white">Homeowner</strong>
+
+            <p style="color:#aaa;">
+                Logged in as:
+                <strong style="color:white">{{ role }}</strong>
             </p>
         </div>
 
         <div class="buttons">
-            <button id="generate-btn" class="btn btn-primary"
-                    onclick="generateReport(this)">
+            <button class="btn btn-primary" onclick="generateReport()">
                 Generate Claim Report
             </button>
 
-            <form action="{{ url_for('export_pdf') }}" method="POST" style="display:inline;">
-                <input type="hidden" name="role" value="Homeowner">
-                <button id="export-btn" class="btn btn-success" disabled>
-                    Export PDF
-                </button>
+            <form action="{{ url_for('routes.export_pdf') }}" method="POST" style="display:inline;">
+                <input type="hidden" name="role" value="{{ role }}">
+                <button id="export-btn"
+                    class="btn btn-success"
+                    disabled>
+                Export PDF
+            </button>
             </form>
         </div>
     </div>
 
-    <!-- Stats -->
+    <!-- ================= STATS ================= -->
     <div class="stats-grid">
         <div class="stat-card status-total">
             <div class="stat-number">{{ stats.total }}</div>
             <div class="stat-label">Reported Defects</div>
         </div>
+
         <div class="stat-card status-pending">
             <div class="stat-number">{{ stats.pending }}</div>
             <div class="stat-label">Pending</div>
         </div>
+
         <div class="stat-card status-completed">
             <div class="stat-number">{{ stats.completed }}</div>
             <div class="stat-label">Completed</div>
         </div>
     </div>
 
-    <!-- Report Preview -->
+    <!-- ================= REPORT PREVIEW ================= -->
     <div id="report-output" style="display:none;">
-        <h2>Report Preview</h2>
-        <pre id="report-json"></pre>
+        <h2>AI Claim Report Preview</h2>
+
+        <div class="report-meta">
+            <small>
+                Generated on:
+                <span id="timestamp-placeholder"></span>
+            </small>
+        </div>
     </div>
 
-    <!-- Defects Table -->
+    <!-- ================= DEFECT TABLE ================= -->
     <div class="card">
         <h2>My Reported Defects</h2>
+
         <table>
             <thead>
                 <tr>
@@ -76,23 +92,32 @@
                     <th>Remark</th>
                 </tr>
             </thead>
+
             <tbody>
                 {% for defect in defects %}
                 <tr>
                     <td>#{{ defect.id }}</td>
                     <td>{{ defect.unit }}</td>
                     <td>{{ defect.desc }}</td>
+
                     <td>
-                        <span class="badge {{ 'status-completed' if defect.status=='Completed' else 'status-pending' }}">
+                        <span class="badge
+                            {{ 'status-completed' if defect.status=='Completed'
+                               else 'status-pending' }}">
                             {{ defect.status }}
                         </span>
                     </td>
+
                     <td>
-                        <button class="btn btn-ai"
-                                onclick="addRemark({{ defect.id }})">
+                        <button class="btn btn-secondary"
+                                onclick="openRemarkModal({{ defect.id }})">
                             Add Note
                         </button>
-                        <div id="remark-{{ defect.id }}" class="ai-narrative-block"></div>
+
+                        <div id="remark-{{ defect.id }}"
+                             class="ai-narrative-block">
+                            {{ defect.remarks }}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -102,19 +127,91 @@
 
 </div>
 
-<!-- Note Modal -->
-<div id="remark-modal" class="modal-overlay">
+<!-- ================= REMARK MODAL ================= -->
+<div id="remark-modal" class="modal-overlay" style="display:none;">
     <div class="modal-content">
         <h2>Add Personal Remark</h2>
-        <p>Defect #<strong id="modal-defect-id"></strong></p>
-        <textarea id="remark-textarea" placeholder="Enter your note..."></textarea>
+
+        <p>
+            Defect #
+            <strong id="modal-defect-id"></strong>
+        </p>
+
+        <textarea id="remark-textarea"
+                  placeholder="Enter your note..."></textarea>
+
         <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeRemarkModal()">Cancel</button>
-            <button id="confirm-remark-btn" class="btn btn-primary">Save</button>
+            <button class="btn btn-secondary" onclick="closeRemarkModal()">
+                Cancel
+            </button>
+
+            <button class="btn btn-primary" onclick="saveRemark()">
+                Save
+            </button>
         </div>
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+<!-- ================= JAVASCRIPT ================= -->
+<script>
+let currentDefectId = null;
+
+function changeRole(select) {
+    window.location.href = "/?role=" + select.value;
+}
+
+/* REPORT GENERATION */
+function generateReport() {
+    // Show report preview
+    document.getElementById("report-output").style.display = "block";
+
+    // Add timestamp
+    document.getElementById("timestamp-placeholder").innerText =
+        new Date().toLocaleString();
+
+    // ✅ Enable Export PDF button
+    document.getElementById("export-btn").disabled = false;
+}
+
+/* REMARK MODAL */
+function openRemarkModal(id) {
+    currentDefectId = id;
+    document.getElementById("modal-defect-id").innerText = id;
+    document.getElementById("remark-textarea").value = "";
+    document.getElementById("remark-modal").style.display = "flex";
+}
+
+function closeRemarkModal() {
+    document.getElementById("remark-modal").style.display = "none";
+}
+
+/* SAVE REMARK → BACKEND */
+function saveRemark() {
+    const remark = document.getElementById("remark-textarea").value.trim();
+
+    if (!remark) {
+        alert("Please enter a remark.");
+        return;
+    }
+
+    fetch("/add_remark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            id: currentDefectId,
+            remark: remark
+        })
+    })
+    .then(res => res.json())
+    .then(() => {
+        document.getElementById(`remark-${currentDefectId}`).innerText = remark;
+        closeRemarkModal();
+    })
+    .catch(() => {
+        alert("Failed to save remark.");
+    });
+}
+</script>
+
 </body>
 </html>
