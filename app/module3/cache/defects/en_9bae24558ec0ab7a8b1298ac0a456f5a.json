@@ -1,0 +1,28 @@
+[
+  {
+    "id": 101,
+    "unit": "A-10-1",
+    "desc": "Crack in the wall of the master bedroom",
+    "status": "Delayed",
+    "owner_id": 1,
+    "urgency": "High",
+    "deadline": "2026-01-12",
+    "is_overdue": false,
+    "hda_compliant": false,
+    "remarks": "No action has been taken by the developer",
+    "_status_raw": "Delayed"
+  },
+  {
+    "id": 103,
+    "unit": "A-10-1",
+    "desc": "Broken tile in the bathroom",
+    "status": "Completed",
+    "owner_id": 1,
+    "urgency": "Low",
+    "deadline": "2025-12-30",
+    "is_overdue": false,
+    "hda_compliant": true,
+    "remarks": "",
+    "_status_raw": "Completed"
+  }
+]
