@@ -26,6 +26,7 @@ function showToast(msg, type = 'success') {
 // ===============================
 // Generate report (all roles)
 // ===============================
+<<<<<<< HEAD
 function generateReport() {
     const role = document.querySelector("strong").innerText;
 
@@ -45,6 +46,40 @@ function generateReport() {
     .catch(() => {
         alert("AI report generation failed.");
     });
+=======
+function generateReport(btn) {
+    btn.disabled = true;
+    btn.innerText = 'Generating...';
+
+    fetch('/generate_report', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            const output = document.getElementById('report-output');
+            const pre = document.getElementById('report-json');
+
+            if (output && pre) {
+                output.style.display = 'block';
+                pre.innerText =
+                    `Type: ${data.metadata.report_type}\n` +
+                    `Date: ${data.metadata.generated_on}\n` +
+                    `Signature: ${data.metadata.digital_signature_hash}`;
+            }
+
+            showToast('Report generated successfully', 'success');
+
+            const exportBtn = document.getElementById('export-btn');
+            if (exportBtn) exportBtn.disabled = false;
+        })
+        .catch(() => {
+            showToast('Failed to generate report', 'error');
+            const exportBtn = document.getElementById('export-btn');
+            if (exportBtn) exportBtn.disabled = true;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerText = 'Generate Report';
+        });
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 }
 
 // ===============================

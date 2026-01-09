@@ -26,6 +26,7 @@
                 </select>
             </label>
 
+<<<<<<< HEAD
             <label style="margin-left: 15px;">Report Language:
                 <select id="language-select">
                     <option value="ms" selected>Bahasa Malaysia</option>
@@ -33,6 +34,8 @@
                 </select>
             </label>
 
+=======
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
             <p style="color:#aaa;">
                 Logged in as:
                 <strong style="color:white">{{ role }}</strong>
@@ -44,10 +47,15 @@
                 Generate Claim Report
             </button>
 
+<<<<<<< HEAD
             <form id="pdf-form" action="{{ url_for('routes.export_pdf') }}" method="POST" style="display:inline;">
                 <input type="hidden" name="role" value="{{ role }}">
                 <input type="hidden" name="language" id="pdf-language" value="ms">
                 <input type="hidden" name="ai_report" id="pdf-ai-report" value="">
+=======
+            <form action="{{ url_for('routes.export_pdf') }}" method="POST" style="display:inline;">
+                <input type="hidden" name="role" value="{{ role }}">
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
                 <button id="export-btn"
                     class="btn btn-success"
                     disabled>
@@ -83,11 +91,16 @@
             <small>
                 Generated on:
                 <span id="timestamp-placeholder"></span>
+<<<<<<< HEAD
                 | Language: <span id="language-placeholder"></span>
             </small>
         </div>
 
         <pre id="report-json" style="white-space: pre-wrap; background: #1e1e1e; padding: 15px; border-radius: 8px; color: #e0e0e0; font-size: 13px; line-height: 1.6;"></pre>
+=======
+            </small>
+        </div>
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
     </div>
 
     <!-- ================= DEFECT TABLE ================= -->
@@ -174,6 +187,7 @@ function changeRole(select) {
 
 /* REPORT GENERATION */
 function generateReport() {
+<<<<<<< HEAD
     const language = document.getElementById("language-select").value;
     
     // Update PDF form language
@@ -221,6 +235,17 @@ function generateReport() {
         alert("Failed to generate AI report.");
         console.error(err);
     });
+=======
+    // Show report preview
+    document.getElementById("report-output").style.display = "block";
+
+    // Add timestamp
+    document.getElementById("timestamp-placeholder").innerText =
+        new Date().toLocaleString();
+
+    // ✅ Enable Export PDF button
+    document.getElementById("export-btn").disabled = false;
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 }
 
 /* REMARK MODAL */
@@ -249,6 +274,7 @@ function saveRemark() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             id: currentDefectId,
+<<<<<<< HEAD
             remark: remark,
             role: "Homeowner"
         })
@@ -269,6 +295,20 @@ function saveRemark() {
     });
 }
 
+=======
+            remark: remark
+        })
+    })
+    .then(res => res.json())
+    .then(() => {
+        document.getElementById(`remark-${currentDefectId}`).innerText = remark;
+        closeRemarkModal();
+    })
+    .catch(() => {
+        alert("Failed to save remark.");
+    });
+}
+>>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 </script>
 
 </body>
