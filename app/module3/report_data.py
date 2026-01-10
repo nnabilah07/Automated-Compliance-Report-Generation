@@ -9,12 +9,12 @@ from datetime import datetime
 
 TRIBUNAL_CASE = {
     "tribunal": "Tribunal Tuntutan Pengguna Malaysia",
-    "lokasi_tribunal": "SHAH ALAM",
+    "lokasi_tribunal": "Shah Alam",
     "no_tuntutan": "TTPM/SGR/2026/000123",
     "tarikh_jana": datetime.now().strftime("%d-%m-%Y"),
     "amaun_tuntutan": "RM 12,000.00",
     "dokumen": "Dokumen Sokongan Borang 1",
-    "negeri": "SELANGOR"
+    "negeri": "Selangor"
 }
 
 

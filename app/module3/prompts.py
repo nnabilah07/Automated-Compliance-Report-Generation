@@ -188,13 +188,14 @@ ARAHAN PENTING (WAJIB DIPATUHI):
    - “berdasarkan rekod yang dikemukakan”
    - “seperti yang dilaporkan”
    - “untuk tujuan pertimbangan Tribunal”
-8. TERJEMAHKAN semua keterangan kecacatan, status, dan ulasan ke Bahasa Malaysia formal.
+8. Pastikan teks ULASAN dipaparkan dalam bahasa yang sama dengan bahasa laporan.
 9. Jika maklumat tertentu tidak tersedia, nyatakan secara jelas:
    “Tiada maklumat lanjut direkodkan.”
 10. Jangan gunakan sebarang format markdown, simbol penegasan, atau hiasan teks.
 11. Susun ayat secara kemas, konsisten, dan menyerupai laporan pentadbiran rasmi.
 Laporan hendaklah ditulis seolah-olah ia akan difailkan sebagai
 dokumen sokongan rasmi kepada Tribunal Tuntutan Pengguna Malaysia.
+12. Jika ulasan tidak diberikan atau hanya menyatakan ketiadaan tindakan, nyatakan secara ringkas dan neutral.
 
 Maklumat Kes:
 {json.dumps(report_data.get("maklumat_kes", {}), indent=2, ensure_ascii=False)}

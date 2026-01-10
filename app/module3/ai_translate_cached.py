@@ -6,10 +6,17 @@ from groqai_client import get_ai_client
 MODEL = "llama-3.3-70b-versatile"
 BASE_CACHE = "cache"
 
-
 # =========================
 # UTILITIES
 # =========================
+def _extract_json(text):
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1:
+        return None
+    return text[start:end+1]
+
+
 def _ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
@@ -28,6 +35,17 @@ def _cache_path(category, key):
     _ensure_dir(folder)
     return os.path.join(folder, f"{key}.cache")
 
+def _normalise_defects(defects):
+    clean = []
+    for d in defects:
+        clean.append({
+            "id": d.get("id"),
+            "unit": d.get("unit"),
+            "desc": d.get("desc", "").strip().lower(),
+            "remarks": d.get("remarks", "").strip().lower(),
+            "priority": d.get("priority"),
+        })
+    return clean
 
 # =========================
 # DEFECT TRANSLATION (JSON)
@@ -36,51 +54,120 @@ def translate_defects_cached(defects, language="ms", role="Homeowner"):
     if not defects or language not in ("ms", "en"):
         return defects
 
-    key = f"{language}_{role}_{_hash_json(defects)}"
+    safe_defects = []
+    for d in defects:
+        safe_defects.append({
+            "id": d.get("id"),
+            "unit": d.get("unit"),
+            "desc": d.get("desc", ""),
+            "remarks": d.get("remarks", ""),
+            "priority": d.get("priority"),
+        })
+
+    key = f"{language}_{role}_{_hash_json(safe_defects)}"
     cache_file = _cache_path("defects", key)
 
-    # 🔁 cache hit
+    translated = None
+
+    # 🔁 LOAD CACHE
     if os.path.exists(cache_file):
-        with open(cache_file, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = f.read().strip()
+                if data:
+                    translated = json.loads(data)
+        except Exception:
+            translated = None
 
-    client = get_ai_client()
+    # 🔹 CALL AI ONLY IF NO CACHE
+    if translated is None:
+        client = get_ai_client()
 
-    target = (
-        "Bahasa Malaysia formal pentadbiran Tribunal"
-        if language == "ms"
-        else "English formal administrative legal style"
-    )
+        target = (
+            "Bahasa Malaysia formal pentadbiran Tribunal"
+            if language == "ms"
+            else "Formal English for Consumer Tribunal documents"
+        )
 
-    prompt = f"""
-Terjemahkan data JSON berikut ke {target}.
+        prompt = f"""
+Translate the JSON data below into {target}.
 
-PERATURAN WAJIB:
-1. Struktur JSON KEKAL
-2. Jangan tambah atau buang medan
-3. Kekalkan ID, nombor, tarikh, unit
-4. Terjemahkan SEMUA teks sahaja
+MANDATORY RULES:
+1. JSON structure MUST remain unchanged
+2. Do NOT add or remove fields
+3. Do NOT change id, numbers, dates, unit, status
+4. Translate ONLY descriptive text (desc, remarks, priority)
+5. Output JSON ONLY
 
 DATA:
-{json.dumps(defects, ensure_ascii=False)}
+{json.dumps(safe_defects, ensure_ascii=False)}
 """
 
-    res = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "Anda penterjemah dokumen rasmi Tribunal TTPM."},
-            {"role": "user", "content": prompt}
-        ]
-    )
+        res = client.chat.completions.create(
+            model=MODEL,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": "You are an official tribunal document translator."},
+                {"role": "user", "content": prompt}
+            ]
+        )
 
-    translated = json.loads(res.choices[0].message.content)
+        raw = res.choices[0].message.content.strip()
+        json_text = _extract_json(raw)
+        if not json_text:
+            return defects
 
-    with open(cache_file, "w", encoding="utf-8") as f:
-        json.dump(translated, f, ensure_ascii=False, indent=2)
+        try:
+            translated = json.loads(json_text)
+        except Exception:
+            return defects
 
-    return translated
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(translated, f, ensure_ascii=False, indent=2)
 
+    # 🔹 MERGE RESULT
+    translated_map = {d["id"]: d for d in translated}
+
+    for d in defects:
+        t = translated_map.get(d["id"])
+        if t:
+            d["desc"] = t.get("desc", d.get("desc"))
+            d["remarks"] = t.get("remarks", d.get("remarks"))
+            d["priority"] = t.get("priority", d.get("priority"))
+
+    # TERMINOLOGY FIX
+    TERM_FIX = {
+        "retros": "retakan",
+        "Retros": "Retakan",
+    }
+
+    for d in defects:
+        if d.get("desc"):
+            for wrong, correct in TERM_FIX.items():
+                d["desc"] = d["desc"].replace(wrong, correct)
+
+    # PRIORITY NORMALISATION (JANGAN GUNA AI)
+    PRIORITY_MAP = {
+        "ms": {
+            "High": "Tinggi",
+            "Medium": "Sederhana",
+            "Low": "Rendah",
+        },
+        "en": {
+            "Tinggi": "High",
+            "Sederhana": "Medium",
+            "Rendah": "Low",
+        }
+    }
+
+    for d in defects:
+        if d.get("priority"):
+            d["priority"] = PRIORITY_MAP.get(language, {}).get(
+                d["priority"],
+                d["priority"]
+            )
+
+    return defects
 
 # =========================
 # AI REPORT TRANSLATION
@@ -92,24 +179,33 @@ def translate_report_cached(report_text, language="ms", role="Homeowner"):
     key = f"{language}_{role}_{_hash_text(report_text)}"
     cache_file = _cache_path("reports", key)
 
-    # 🔁 cache hit
+    # 🔁 cache hit (SAFE)
     if os.path.exists(cache_file):
-        with open(cache_file, "r", encoding="utf-8") as f:
-            return f.read()
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = f.read().strip()
+                if data:
+                    return data
+                else:
+                    raise ValueError
+        except Exception:
+            pass
+
 
     client = get_ai_client()
 
     target = (
         "Bahasa Malaysia formal Tribunal"
         if language == "ms"
-        else "Formal English Tribunal style"
+        else "Formal English for Consumer Tribunal documents"
     )
 
     prompt = f"""
-Terjemahkan teks berikut ke {target}.
-Kekalkan format perenggan dan penomboran.
+Translate the text below into {target}.
+ALL content must be translated into the target language.
+Do NOT leave any original language text.
 
-TEKS:
+TEXT:
 {report_text}
 """
 
@@ -117,12 +213,16 @@ TEKS:
         model=MODEL,
         temperature=0,
         messages=[
-            {"role": "system", "content": "Anda penterjemah dokumen rasmi Tribunal."},
+            {"role": "system", "content": "You are an official tribunal document translator."},
             {"role": "user", "content": prompt}
         ]
     )
 
     translated = res.choices[0].message.content.strip()
+
+    # ❗ AI kosong → guna report asal
+    if not translated:
+        return report_text
 
     with open(cache_file, "w", encoding="utf-8") as f:
         f.write(translated)

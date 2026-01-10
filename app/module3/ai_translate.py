@@ -112,7 +112,7 @@ PERATURAN WAJIB:
 2. Jangan tambah atau buang medan
 3. Jangan buat analisis, rumusan, atau komen
 4. Kekalkan ID, nombor, tarikh, unit tanpa perubahan
-5. Terjemahkan description, remarks, priority SAHAJA
+5. Terjemahkan desc, remarks, priority SAHAJA
 6. Status MESTI KEKAL nilai asal
 
 DATA JSON:

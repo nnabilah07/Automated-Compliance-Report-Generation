@@ -3,21 +3,16 @@ from flask import (
     render_template,
     send_file,
     request,
-<<<<<<< HEAD
     current_app,
     jsonify
 )
-from config_pdf_labels import PDF_LABELS
-=======
-    current_app
-)
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
+
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+
 from io import BytesIO
 from datetime import datetime
-<<<<<<< HEAD
 # from werkzeug.utils import secure_filename
 import os
 import json
@@ -26,11 +21,15 @@ import re
 # --------------------------------
 # IMPORT DATA & SERVICES
 # --------------------------------
+from config_pdf_labels import PDF_LABELS
 from dummy_data import get_defects_for_role, calculate_stats
 from report_data import build_report_data
 from report_generator import generate_ai_report
 # from prompts import get_language_config
-from ai_translate import ai_translate_defects
+from ai_translate_cached import (
+    translate_defects_cached,
+    translate_report_cached
+)
 
 # --------------------------------
 # BLUEPRINT
@@ -126,30 +125,13 @@ def draw_wrapped_text(pdf, text, x, y, max_width, font_name="Helvetica", font_si
     return y
 
 # =================================================
-# DASHBOARD (no AI translation)
-=======
-import os
-
-# --------------------------------
-# IMPORT DUMMY DATA
-# --------------------------------
-from dummy_data import get_defects_for_role, calculate_stats
-
-# --------------------------------
-# CREATE BLUEPRINT
-# --------------------------------
-routes = Blueprint("routes", __name__)
-
-# =================================================
 # DASHBOARD ROUTE (THIS MAKES THE UI OPEN)
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 # =================================================
 @routes.route("/")
 def dashboard():
     role = request.args.get("role", "Homeowner")
 
     defects = get_defects_for_role(role)
-<<<<<<< HEAD
     remarks_store = load_remarks()
     status_store = load_status()
 
@@ -172,16 +154,6 @@ def dashboard():
         if role == "Developer"
         else "dashboard_legal.html"
     )
-=======
-    stats = calculate_stats(defects)
-
-    if role == "Homeowner":
-        template = "dashboard_homeowner.html"
-    elif role == "Developer":
-        template = "dashboard_developer.html"
-    else:
-        template = "dashboard_legal.html"
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 
     return render_template(
         template,
@@ -191,7 +163,6 @@ def dashboard():
     )
 
 # =================================================
-<<<<<<< HEAD
 # UPLOAD EVIDENCE IMAGE
 # =================================================
 @routes.route("/upload_evidence", methods=["POST"])
@@ -339,37 +310,166 @@ def generate_ai_report_api():
         status_store = load_status()
 
         for d in defects:
-            # Status is shared across all roles
             d["status"] = status_store.get(str(d["id"]), d["status"])
-
-            # Remarks are ONLY visible to Homeowner
-            if role == "Homeowner":
-                d["remarks"] = remarks_store.get(str(d["id"]), "")
-            else:
-                d["remarks"] = ""
+            d["remarks"] = remarks_store.get(str(d["id"]), "")  # optional
+            # NORMALISE urgency → priority (SEBELUM translate)
+            if "urgency" in d and not d.get("priority"):
+                d["priority"] = d["urgency"]
 
         # LOCK STATUS (BACKEND AUTHORITY)
         for d in defects:
             d["_status_raw"] = d["status"]
 
-        # AI TRANSLATION (TEXT ONLY)
-        defects = ai_translate_defects(defects, language)
+        # AI TRANSLATION (CACHE IKUT ROLE)
+        defects = translate_defects_cached(
+            defects,
+            language=language,
+            role=role
+        )
 
-        # RESTORE STATUS (ANTI-AI POLLUTION)
+        # ==========================================
+        # FORCE REMARKS LANGUAGE CONSISTENTLY
+        # (ONLY FOR AI REPORT, NOT PDF)
+        # ==========================================
+        if language == "ms":
+            for d in defects:
+                if d.get("remarks"):
+                    d["remarks"] = translate_report_cached(
+                        d["remarks"],
+                        language="ms",
+                        role=role
+                    )
+        elif language == "en":
+            for d in defects:
+                if d.get("remarks"):
+                    d["remarks"] = translate_report_cached(
+                        d["remarks"],
+                        language="en",
+                        role=role
+                    )
+
+        # RESTORE STATUS
         for d in defects:
             d["status"] = d.pop("_status_raw", d["status"])
 
-        if language == "ms":
-            from config_pdf_labels import PDF_LABELS
-            status_map = PDF_LABELS["ms"]["status_map"]
+        if role != "Homeowner":
             for d in defects:
-                d["status"] = status_map.get(d["status"], d["status"])
-                
+                d["remarks"] = ""
+        
+        # =================================================
+        # NORMALISE STATUS FOR STATISTICS (ALWAYS ENGLISH)
+        # =================================================
+        STATUS_NORMALISE = {
+            "Belum Diselesaikan": "Pending",
+            "Dalam Tindakan": "In Progress",
+            "Telah Diselesaikan": "Completed",
+            "Tertangguh": "Delayed",
+        }
+
+        for d in defects:
+            if d.get("status") in STATUS_NORMALISE:
+                d["status"] = STATUS_NORMALISE[d["status"]]
+
         # BUILD REPORT
         stats = calculate_stats(defects)
         report_data = build_report_data(role, defects, stats)
 
+        STATUS_MAP = {
+            "ms": {
+                "Pending": "Belum Diselesaikan",
+                "In Progress": "Dalam Tindakan",
+                "Completed": "Telah Diselesaikan",
+                "Delayed": "Tertangguh",
+            },
+            "en": {
+                "Belum Diselesaikan": "Pending",
+                "Dalam Tindakan": "In Progress",
+                "Telah Diselesaikan": "Completed",
+                "Tertangguh": "Delayed",
+            }
+        }
+
+        for d in report_data.get("defects", []):
+            if d.get("status"):
+                d["status"] = STATUS_MAP.get(language, {}).get(
+                    d["status"],
+                    d["status"]
+                )
+
         report = generate_ai_report(role, report_data, language)
+
+        # PREPARE CORRECT CLAIM SUMMARY (BACKEND)
+        summary = report_data.get("ringkasan_statistik", {})
+
+        total_defects = summary.get("jumlah_kecacatan", 0)
+        pending_count = summary.get("belum_diselesaikan", 0)
+        completed_count = summary.get("telah_diselesaikan", 0)
+
+        if language == "en":
+            correct_summary = (
+                "Claim Summary:\n"
+                f"Total Defects Reported: {total_defects}\n"
+                f"Pending: {pending_count}\n"
+                f"Completed: {completed_count}"
+            )
+        else:
+            correct_summary = (
+                "Ringkasan Tuntutan:\n"
+                f"Jumlah Kecacatan Dilaporkan: {total_defects}\n"
+                f"Belum Diselesaikan: {pending_count}\n"
+                f"Telah Diselesaikan: {completed_count}"
+            )
+
+        import re
+        # Replace ONLY the Claim Summary section in AI text
+        report = re.sub(
+            r"(Claim Summary:.*?)(?=\n[A-Z]|\Z)",
+            correct_summary + "\n",
+            report,
+            flags=re.DOTALL
+        )
+
+        report = re.sub(
+            r"(Ringkasan Tuntutan:.*?)(?=\n[A-Z]|\Z)",
+            correct_summary + "\n",
+            report,
+            flags=re.DOTALL
+        )
+
+        # =================================================
+        # FIX LANGUAGE MIXING IN AI REPORT PREVIEW (TEXT)
+        # =================================================
+        if language == "en":
+            report = (
+                report
+                # STATUS
+                .replace("Status: Belum Diselesaikan", "Status: Pending")
+                .replace("Status: Dalam Tindakan", "Status: In Progress")
+                .replace("Status: Telah Diselesaikan", "Status: Completed")
+                .replace("Status: Tertangguh", "Status: Delayed")
+
+                # PRIORITY
+                .replace("Keutamaan:", "Priority:")
+                .replace("Priority: Tinggi", "Priority: High")
+                .replace("Priority: Sederhana", "Priority: Medium")
+                .replace("Priority: Rendah", "Priority: Low")
+            )
+
+        elif language == "ms":
+            report = (
+                report
+                # STATUS
+                .replace("Status: Pending", "Status: Belum Diselesaikan")
+                .replace("Status: In Progress", "Status: Dalam Tindakan")
+                .replace("Status: Completed", "Status: Telah Diselesaikan")
+                .replace("Status: Delayed", "Status: Tertangguh")
+
+                # PRIORITY
+                .replace("Priority:", "Keutamaan:")
+                .replace("Keutamaan: High", "Keutamaan: Tinggi")
+                .replace("Keutamaan: Medium", "Keutamaan: Sederhana")
+                .replace("Keutamaan: Low", "Keutamaan: Rendah")
+            )
 
         # Validate AI report is not empty
         if not report or len(report.strip()) < 50:
@@ -405,58 +505,122 @@ def generate_ai_report_api():
 
 # =================================================
 # EXPORT PDF - BORANG 1 TTPM FORMAT WITH AI REPORT
-=======
 # PDF EXPORT ROUTE
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 # =================================================
 @routes.route("/export_pdf", methods=["POST"])
 def export_pdf():
     role = request.form.get("role", "Homeowner")
-<<<<<<< HEAD
     language = request.form.get("language", "ms")
-    ai_report_text = request.form.get("ai_report", "")  # Get AI report from form
-    
-    # Get language-specific labels
+    ai_report_text = request.form.get("ai_report", "")
+
+    # Load language-specific labels
     labels = PDF_LABELS.get(language, PDF_LABELS["ms"])
 
     defects = get_defects_for_role(role)
     remarks_store = load_remarks()
     status_store = load_status()
 
+    # LOAD DATA AND NORMALISE FIELDS
     for d in defects:
-        # Status is shared across all roles
+        # Load latest status from storage
         d["status"] = status_store.get(str(d["id"]), d["status"])
 
-        # Remarks are ONLY visible to Homeowner
-        if role == "Homeowner":
-            d["remarks"] = remarks_store.get(str(d["id"]), "")
-        else:
-            d["remarks"] = ""  # Hide remarks for Developer & Legal
+        # Load remarks (Homeowner only, filtered later)
+        d["remarks"] = remarks_store.get(str(d["id"]), "")
 
-    # ===== LOCK STATUS (BACKEND AUTHORITY) =====
+        # Normalise urgency → priority if priority is missing
+        if "urgency" in d and not d.get("priority"):
+            d["priority"] = d["urgency"]
+
+    # LOCK STATUS (BACKEND AUTHORITY)
+    # Status must NEVER be modified by AI
     for d in defects:
-        d["_status_raw"] = d["status"]
+        d["_status_raw"] = d["status"]  # Always English internally
 
-    # AI translate (WITHOUT status)
-    defects = ai_translate_defects(defects, language)
+    # TRANSLATE DEFECT TEXT (AI, CACHED)
+    # Status is NOT translated here
+    defects = translate_defects_cached(
+        defects,
+        language=language,
+        role=role
+    )
 
-    # Restore status (NEVER from AI)
+    # RESTORE ORIGINAL STATUS BEFORE STATS
     for d in defects:
         d["status"] = d.pop("_status_raw", d["status"])
 
+    # =================================================
+    # NORMALISE STATUS FOR STATISTICS (ALWAYS ENGLISH)
+    # =================================================
+    STATUS_NORMALISE = {
+        "Belum Diselesaikan": "Pending",
+        "Dalam Tindakan": "In Progress",
+        "Telah Diselesaikan": "Completed",
+        "Tertangguh": "Delayed",
+    }
+
+    for d in defects:
+        if d.get("status") in STATUS_NORMALISE:
+            d["status"] = STATUS_NORMALISE[d["status"]]
+
+    # CALCULATE STATISTICS (STATUS MUST BE ENGLISH)
     stats = calculate_stats(defects)
     report_data = build_report_data(role, defects, stats)
-=======
 
-    defects = get_defects_for_role(role)
-    stats = calculate_stats(defects)
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
+    # TRANSLATE STATUS FOR PDF DISPLAY ONLY
+    STATUS_MAP = {
+        "ms": {
+            "Pending": "Belum Diselesaikan",
+            "In Progress": "Dalam Tindakan",
+            "Completed": "Telah Diselesaikan",
+            "Delayed": "Tertangguh",
+        },
+        "en": {
+            "Belum Diselesaikan": "Pending",
+            "Dalam Tindakan": "In Progress",
+            "Telah Diselesaikan": "Completed",
+            "Tertangguh": "Delayed",
+        }
+    }
 
+    for d in defects:
+        if d.get("status"):
+            d["status"] = STATUS_MAP.get(language, {}).get(
+                d["status"],
+                d["status"]
+            )
+
+    # HIDE REMARKS FOR NON-HOMEOWNER ROLES
+    if role != "Homeowner":
+        for d in defects:
+            d["remarks"] = ""
+
+    # TRANSLATE PRIORITY FOR PDF DISPLAY
+    PRIORITY_MAP = {
+        "ms": {
+            "High": "Tinggi",
+            "Medium": "Sederhana",
+            "Low": "Rendah",
+        },
+        "en": {
+            "Tinggi": "High",
+            "Sederhana": "Medium",
+            "Rendah": "Low",
+        }
+    }
+
+    for d in defects:
+        if d.get("priority"):
+            d["priority"] = PRIORITY_MAP.get(language, {}).get(
+                d["priority"],
+                d["priority"]
+            )
+
+    # START PDF GENERATION
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-<<<<<<< HEAD
     # Ensure evidence directory exists
     evidence_dir = os.path.join(current_app.root_path, "evidence")
     os.makedirs(evidence_dir, exist_ok=True)
@@ -498,15 +662,15 @@ def export_pdf():
     y = height - 175
     pdf.setFont("Helvetica", 10)
     if language == "en":
-        pdf.drawCentredString(width/2, y, f"AT  {report_data['maklumat_kes']['lokasi_tribunal']}")
+        pdf.drawCentredString(width/2, y, f"AT  {report_data['maklumat_kes']['lokasi_tribunal']}".upper())
         y -= 20
-        pdf.drawCentredString(width/2, y, f"IN THE STATE OF {report_data['maklumat_kes']['negeri']}, MALAYSIA")
+        pdf.drawCentredString(width/2, y, f"IN THE STATE OF {report_data['maklumat_kes']['negeri']}, MALAYSIA".upper())
         y -= 20
         pdf.drawString(50, y, f"CLAIM NO.: {report_data['maklumat_kes']['no_tuntutan']}")
     else:
-        pdf.drawCentredString(width/2, y, f"DI  {report_data['maklumat_kes']['lokasi_tribunal']}")
+        pdf.drawCentredString(width/2, y, f"DI  {report_data['maklumat_kes']['lokasi_tribunal']}".upper())
         y -= 20
-        pdf.drawCentredString(width/2, y, f"DI NEGERI {report_data['maklumat_kes']['negeri']}, MALAYSIA")
+        pdf.drawCentredString(width/2, y, f"DI NEGERI {report_data['maklumat_kes']['negeri']}, MALAYSIA".upper())
         y -= 20
         pdf.drawString(50, y, f"TUNTUTAN NO.: {report_data['maklumat_kes']['no_tuntutan']}")
     
@@ -775,10 +939,7 @@ def export_pdf():
 
         # ---- Status ----
         pdf.drawString(LABEL_X, y, labels["status"])
-        status_text = labels["status_map"].get(
-            defect["status"],
-            defect["status"]  # fallback
-        )
+        status_text = defect["status"]
         pdf.drawString(VALUE_X, y, f": {status_text}")
         y -= 14
 
@@ -857,6 +1018,51 @@ def export_pdf():
         clean_text = clean_text.replace('\r\n', '\n')
         clean_text = clean_text.replace('\r', '\n')
         clean_text = re.sub(r'[^\x00-\x7F]+', '', clean_text)
+        # TRANSLATE PRIORITY INSIDE AI REPORT TEXT
+        if language == "en":
+            # Force ALL status to English
+            clean_text = clean_text.replace("Status: Telah Diselesaikan", "Status: Completed")
+            clean_text = clean_text.replace("Status: Belum Diselesaikan", "Status: Pending")
+            clean_text = clean_text.replace("Status: Dalam Tindakan", "Status: In Progress")
+            clean_text = clean_text.replace("Status: Tertangguh", "Status: Delayed")
+
+            # Priority
+            clean_text = clean_text.replace("Keutamaan:", "Priority:")
+            clean_text = clean_text.replace("Priority: Tinggi", "Priority: High")
+            clean_text = clean_text.replace("Priority: Sederhana", "Priority: Medium")
+            clean_text = clean_text.replace("Priority: Rendah", "Priority: Low")
+
+        elif language == "ms":
+            # Force ALL status to Bahasa Malaysia
+            clean_text = clean_text.replace("Status: Completed", "Status: Telah Diselesaikan")
+            clean_text = clean_text.replace("Status: Pending", "Status: Belum Diselesaikan")
+            clean_text = clean_text.replace("Status: In Progress", "Status: Dalam Tindakan")
+            clean_text = clean_text.replace("Status: Delayed", "Status: Tertangguh")
+
+            # Priority
+            clean_text = clean_text.replace("Priority:", "Keutamaan:")
+            clean_text = clean_text.replace("Keutamaan: High", "Keutamaan: Tinggi")
+            clean_text = clean_text.replace("Keutamaan: Medium", "Keutamaan: Sederhana")
+            clean_text = clean_text.replace("Keutamaan: Low", "Keutamaan: Rendah")
+
+        # =================================================
+        # FIX REMARKS LANGUAGE USING DEFECT DATA (AUTHORITATIVE)
+        # =================================================
+        if language == "ms":
+            for defect in defects:
+                if defect.get("remarks"):
+                    clean_text = clean_text.replace(
+                        "Ulasan:",
+                        "Ulasan:"
+                    )
+
+        elif language == "en":
+            for defect in defects:
+                if defect.get("remarks"):
+                    clean_text = clean_text.replace(
+                        "Remarks:",
+                        "Remarks:"
+                    )
 
         # Split AI report into lines
         lines = clean_text.split('\n')
@@ -891,7 +1097,7 @@ def export_pdf():
                 y -= 8    # space before each defect item
 
             # Extra space after finishing one defect block
-            if stripped.startswith("Tarikh siap") or stripped.startswith("Tarikh dijadualkan"):
+            if stripped.startswith("Tarikh siap") or stripped.startswith("Tarikh dijadualkan") or stripped.startswith("Tarikh Siap"):
                 y -= 10   # space after one defect
 
             # Detect headers (LEFT ALIGN ONLY)
@@ -942,9 +1148,11 @@ def export_pdf():
                 "Description:",
                 "Priority:",
                 "Remarks:",
+                "Tarikh siap:",
                 "Tarikh Siap:",
                 "Completion Date:",
-                "Current Status:"
+                "Current Status:",
+                "Scheduled Completion Date:"
             ))
 
             # Font & indent
@@ -1084,159 +1292,11 @@ def export_pdf():
         filename = labels["developer_filename"]
     else:
         filename = labels["homeowner_filename"]
-=======
-    # -------------------------------
-    # HEADER
-    # -------------------------------
-    pdf.setFont("Helvetica-Bold", 16)
-
-    if role == "Legal":
-        title = "DLP Full Compliance Report"
-        prepared_by = "Legal Officer"
-    elif role == "Developer":
-        title = "DLP Repair Compliance Report"
-        prepared_by = "Developer"
-    else:
-        title = "DLP Defect Claim Report"
-        prepared_by = "Homeowner"
-
-    pdf.drawString(50, height - 50, title)
-
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(50, height - 70, f"Prepared by: {prepared_by}")
-    pdf.drawString(
-        50,
-        height - 85,
-        f"Generated on: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-    )
-
-    # -------------------------------
-    # SUMMARY
-    # -------------------------------
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(50, height - 120, "Report Summary")
-
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(70, height - 140, f"Total Defects: {stats['total']}")
-    pdf.drawString(70, height - 155, f"Pending: {stats['pending']}")
-    pdf.drawString(70, height - 170, f"Completed: {stats['completed']}")
-
-    # -------------------------------
-    # DEFECT DETAILS
-    # -------------------------------
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(50, height - 200, "Defect Details")
-
-    y = height - 220
-    pdf.setFont("Helvetica", 10)
-
-    for defect in defects:
-
-        if y < 160:
-            pdf.showPage()
-            y = height - 50
-            pdf.setFont("Helvetica", 10)
-
-        pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawString(
-            50,
-            y,
-            f"Defect ID: {defect['id']} | Unit: {defect['unit']}"
-        )
-        y -= 15
-
-        pdf.setFont("Helvetica", 10)
-        pdf.drawString(70, y, f"Description: {defect['desc']}")
-        y -= 15
-        pdf.drawString(70, y, f"Status: {defect['status']}")
-        y -= 15
-
-        # Homeowner remark (only for homeowner reports)
-        if role == "Homeowner" and defect.get("remarks"):
-            pdf.drawString(70, y, f"Remark: {defect['remarks']}")
-            y -= 15
-
-        # Optional image evidence
-        image_path = defect.get("image")
-        if image_path:
-            full_path = os.path.join(current_app.root_path, image_path)
-            if os.path.exists(full_path):
-                img = ImageReader(full_path)
-                pdf.drawImage(img, 70, y - 120, width=180, height=120)
-                y -= 130
-
-        y -= 10
-
-    # -------------------------------
-    # FOOTER
-    # -------------------------------
-    pdf.setFont("Helvetica-Oblique", 9)
-    pdf.drawString(
-        50,
-        40,
-        "This report is system-generated under DLP-CRAM and includes timestamped records for compliance verification."
-    )
-    pdf.drawString(
-        50,
-        25,
-        "Digital Signature Hash: DLP-CRAM-2025-XYZ123"
-    )
-
-    pdf.save()
-    buffer.seek(0)
-
-    filename = (
-        "dlp_full_compliance_report.pdf"
-        if role == "Legal"
-        else "dlp_report.pdf"
-    )
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
 
     return send_file(
         buffer,
         as_attachment=True,
         download_name=filename,
         mimetype="application/pdf"
-<<<<<<< HEAD
+
 )
-   
-=======
-    )
-
-# =================================================
-# UPDATE DEFECT STATUS (BACKEND UPDATE)
-# =================================================
-@routes.route("/update_status", methods=["POST"])
-def update_status():
-    data = request.json
-    defect_id = int(data.get("id"))
-    new_status = data.get("status")
-
-    # Since this is dummy data, we update in-memory list
-    defects = get_defects_for_role("Developer")  # Developer sees all
-
-    for d in defects:
-        if d["id"] == defect_id:
-            d["status"] = new_status
-            break
-
-    return {
-        "status": "success",
-        "message": "Defect status updated"
-    }
-
-@routes.route("/add_remark", methods=["POST"])
-def add_remark():
-    data = request.json
-    defect_id = int(data["id"])
-    remark = data["remark"]
-
-    defects = get_defects_for_role("Developer")
-
-    for d in defects:
-        if d["id"] == defect_id:
-            d["remarks"] = remark
-            break
-
-    return {"status": "success"}
->>>>>>> e0000786b661f15f3de3bda2b6d651ea1ff70783
