@@ -5,7 +5,7 @@ from groq import Groq
 _client = None  # singleton
 
 # Groq AI API key (replace with your own api)
-GROQ_API_KEY = "replace _here"
+GROQ_API_KEY = "replace_here"
 
 def get_ai_client():
     """

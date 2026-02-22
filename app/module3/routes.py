@@ -7,6 +7,12 @@ from flask import (
     jsonify
 )
 
+from config_mappings import (
+    STATUS_NORMALISE,
+    STATUS_TRANSLATION,
+    PRIORITY_TRANSLATION
+)
+
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -312,7 +318,9 @@ def generate_ai_report_api():
         for d in defects:
             d["status"] = status_store.get(str(d["id"]), d["status"])
             d["remarks"] = remarks_store.get(str(d["id"]), "")  # optional
-            # NORMALISE urgency → priority (SEBELUM translate)
+            d["overdue"] = d.get("is_overdue", False)
+            d["hda_compliant"] = d.get("hda_compliant", True)
+            # NORMALISE urgency → priority (BEFORE translate)
             if "urgency" in d and not d.get("priority"):
                 d["priority"] = d["urgency"]
 
@@ -359,13 +367,6 @@ def generate_ai_report_api():
         # =================================================
         # NORMALISE STATUS FOR STATISTICS (ALWAYS ENGLISH)
         # =================================================
-        STATUS_NORMALISE = {
-            "Belum Diselesaikan": "Pending",
-            "Dalam Tindakan": "In Progress",
-            "Telah Diselesaikan": "Completed",
-            "Tertangguh": "Delayed",
-        }
-
         for d in defects:
             if d.get("status") in STATUS_NORMALISE:
                 d["status"] = STATUS_NORMALISE[d["status"]]
@@ -374,24 +375,11 @@ def generate_ai_report_api():
         stats = calculate_stats(defects)
         report_data = build_report_data(role, defects, stats)
 
-        STATUS_MAP = {
-            "ms": {
-                "Pending": "Belum Diselesaikan",
-                "In Progress": "Dalam Tindakan",
-                "Completed": "Telah Diselesaikan",
-                "Delayed": "Tertangguh",
-            },
-            "en": {
-                "Belum Diselesaikan": "Pending",
-                "Dalam Tindakan": "In Progress",
-                "Telah Diselesaikan": "Completed",
-                "Tertangguh": "Delayed",
-            }
-        }
-
         for d in report_data.get("defects", []):
+            d["reported_date"] = d.get("reported_date", "-")
+            d["deadline"] = d.get("deadline", "-")
             if d.get("status"):
-                d["status"] = STATUS_MAP.get(language, {}).get(
+                d["status"] = STATUS_TRANSLATION.get(language, {}).get(
                     d["status"],
                     d["status"]
                 )
@@ -552,13 +540,6 @@ def export_pdf():
     # =================================================
     # NORMALISE STATUS FOR STATISTICS (ALWAYS ENGLISH)
     # =================================================
-    STATUS_NORMALISE = {
-        "Belum Diselesaikan": "Pending",
-        "Dalam Tindakan": "In Progress",
-        "Telah Diselesaikan": "Completed",
-        "Tertangguh": "Delayed",
-    }
-
     for d in defects:
         if d.get("status") in STATUS_NORMALISE:
             d["status"] = STATUS_NORMALISE[d["status"]]
@@ -568,24 +549,9 @@ def export_pdf():
     report_data = build_report_data(role, defects, stats)
 
     # TRANSLATE STATUS FOR PDF DISPLAY ONLY
-    STATUS_MAP = {
-        "ms": {
-            "Pending": "Belum Diselesaikan",
-            "In Progress": "Dalam Tindakan",
-            "Completed": "Telah Diselesaikan",
-            "Delayed": "Tertangguh",
-        },
-        "en": {
-            "Belum Diselesaikan": "Pending",
-            "Dalam Tindakan": "In Progress",
-            "Telah Diselesaikan": "Completed",
-            "Tertangguh": "Delayed",
-        }
-    }
-
     for d in defects:
         if d.get("status"):
-            d["status"] = STATUS_MAP.get(language, {}).get(
+            d["status"] = STATUS_TRANSLATION.get(language, {}).get(
                 d["status"],
                 d["status"]
             )
@@ -596,22 +562,9 @@ def export_pdf():
             d["remarks"] = ""
 
     # TRANSLATE PRIORITY FOR PDF DISPLAY
-    PRIORITY_MAP = {
-        "ms": {
-            "High": "Tinggi",
-            "Medium": "Sederhana",
-            "Low": "Rendah",
-        },
-        "en": {
-            "Tinggi": "High",
-            "Sederhana": "Medium",
-            "Rendah": "Low",
-        }
-    }
-
     for d in defects:
         if d.get("priority"):
-            d["priority"] = PRIORITY_MAP.get(language, {}).get(
+            d["priority"] = PRIORITY_TRANSLATION.get(language, {}).get(
                 d["priority"],
                 d["priority"]
             )
@@ -630,52 +583,127 @@ def export_pdf():
     # ============================================
     
     # --- HEADER (Centered) ---
+    TOP_MARGIN = 40
+    LINE_SPACING_SMALL = 13
+    LINE_SPACING_MEDIUM = 16
+    LINE_SPACING_LARGE = 22
+
+    y = height - TOP_MARGIN
+
+    # ---------------------------
+    # ACT TITLE
+    # ---------------------------
     pdf.setFont("Helvetica-Bold", 11)
+
     if language == "en":
-        pdf.drawCentredString(width/2, height - 40, "CONSUMER PROTECTION ACT 1999")
-        pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawCentredString(width/2, height - 55, "CONSUMER PROTECTION REGULATIONS")
-        pdf.drawCentredString(width/2, height - 68, "(CONSUMER CLAIMS TRIBUNAL) 1999")
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawCentredString(width/2, height - 90, "FORM 1")
-        pdf.setFont("Helvetica", 9)
-        pdf.drawCentredString(width/2, height - 102, "(Regulation 5)")
-        pdf.setFont("Helvetica-Bold", 11)
-        pdf.drawCentredString(width/2, height - 125, "STATEMENT OF CLAIM")
-        pdf.setFont("Helvetica", 10)
-        pdf.drawCentredString(width/2, height - 145, "IN THE CONSUMER CLAIMS TRIBUNAL")
+        pdf.drawCentredString(width/2, y, "CONSUMER PROTECTION ACT 1999")
     else:
-        pdf.drawCentredString(width/2, height - 40, "AKTA PERLINDUNGAN PENGGUNA 1999")
-        pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawCentredString(width/2, height - 55, "PERATURAN-PERATURAN PERLINDUNGAN PENGGUNA")
-        pdf.drawCentredString(width/2, height - 68, "(TRIBUNAL TUNTUTAN PENGGUNA) 1999")
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawCentredString(width/2, height - 90, "BORANG 1")
-        pdf.setFont("Helvetica", 9)
-        pdf.drawCentredString(width/2, height - 102, "(Peraturan 5)")
-        pdf.setFont("Helvetica-Bold", 11)
-        pdf.drawCentredString(width/2, height - 125, "PERNYATAAN TUNTUTAN")
-        pdf.setFont("Helvetica", 10)
-        pdf.drawCentredString(width/2, height - 145, "DALAM TRIBUNAL TUNTUTAN PENGGUNA")
-    
-    # --- Location & Case Number ---
-    y = height - 175
+        pdf.drawCentredString(width/2, y, "AKTA PERLINDUNGAN PENGGUNA 1999")
+
+    y -= LINE_SPACING_MEDIUM
+
+
+    # ---------------------------
+    # REGULATIONS TITLE
+    # ---------------------------
+    pdf.setFont("Helvetica-Bold", 10)
+
+    if language == "en":
+        pdf.drawCentredString(width/2, y, "CONSUMER PROTECTION REGULATIONS")
+    else:
+        pdf.drawCentredString(width/2, y, "PERATURAN-PERATURAN PERLINDUNGAN PENGGUNA")
+
+    y -= LINE_SPACING_SMALL
+
+
+    # ---------------------------
+    # TRIBUNAL REFERENCE
+    # ---------------------------
+    if language == "en":
+        pdf.drawCentredString(width/2, y, "(CONSUMER CLAIMS TRIBUNAL) 1999")
+    else:
+        pdf.drawCentredString(width/2, y, "(TRIBUNAL TUNTUTAN PENGGUNA) 1999")
+
+    y -= LINE_SPACING_LARGE
+
+
+    # ---------------------------
+    # FORM TITLE
+    # ---------------------------
+    pdf.setFont("Helvetica-Bold", 12)
+
+    if language == "en":
+        pdf.drawCentredString(width/2, y, "FORM 1")
+    else:
+        pdf.drawCentredString(width/2, y, "BORANG 1")
+
+    y -= LINE_SPACING_SMALL
+
+
+    pdf.setFont("Helvetica", 9)
+
+    if language == "en":
+        pdf.drawCentredString(width/2, y, "(Regulation 5)")
+    else:
+        pdf.drawCentredString(width/2, y, "(Peraturan 5)")
+
+    y -= LINE_SPACING_LARGE
+
+
+    # ---------------------------
+    # STATEMENT TITLE
+    # ---------------------------
+    pdf.setFont("Helvetica-Bold", 11)
+
+    if language == "en":
+        pdf.drawCentredString(width/2, y, "STATEMENT OF CLAIM")
+    else:
+        pdf.drawCentredString(width/2, y, "PERNYATAAN TUNTUTAN")
+
+    y -= LINE_SPACING_MEDIUM
+
+
     pdf.setFont("Helvetica", 10)
+
     if language == "en":
-        pdf.drawCentredString(width/2, y, f"AT  {report_data['maklumat_kes']['lokasi_tribunal']}".upper())
-        y -= 20
-        pdf.drawCentredString(width/2, y, f"IN THE STATE OF {report_data['maklumat_kes']['negeri']}, MALAYSIA".upper())
-        y -= 20
-        pdf.drawString(50, y, f"CLAIM NO.: {report_data['maklumat_kes']['no_tuntutan']}")
+        pdf.drawCentredString(width/2, y, "IN THE CONSUMER CLAIMS TRIBUNAL")
     else:
-        pdf.drawCentredString(width/2, y, f"DI  {report_data['maklumat_kes']['lokasi_tribunal']}".upper())
-        y -= 20
-        pdf.drawCentredString(width/2, y, f"DI NEGERI {report_data['maklumat_kes']['negeri']}, MALAYSIA".upper())
-        y -= 20
-        pdf.drawString(50, y, f"TUNTUTAN NO.: {report_data['maklumat_kes']['no_tuntutan']}")
-    
+        pdf.drawCentredString(width/2, y, "DALAM TRIBUNAL TUNTUTAN PENGGUNA")
+
+    y -= 30
+
+
+    # ============================================
+    # LOCATION & CLAIM NUMBER
+    # ============================================
+
+    pdf.setFont("Helvetica", 10)
+
+    lokasi = report_data["maklumat_kes"]["lokasi_tribunal"]
+    negeri = report_data["maklumat_kes"]["negeri"]
+    no_tuntutan = report_data["maklumat_kes"]["no_tuntutan"]
+
+    if language == "en":
+        pdf.drawCentredString(width/2, y, f"AT {lokasi}".upper())
+        y -= LINE_SPACING_MEDIUM
+
+        pdf.drawCentredString(width/2, y, f"IN THE STATE OF {negeri}, MALAYSIA".upper())
+        y -= LINE_SPACING_MEDIUM
+
+        pdf.drawString(50, y, f"CLAIM NO.: {no_tuntutan}")
+    else:
+        pdf.drawCentredString(width/2, y, f"DI {lokasi}".upper())
+        y -= LINE_SPACING_MEDIUM
+
+        pdf.drawCentredString(width/2, y, f"DI NEGERI {negeri}, MALAYSIA".upper())
+        y -= LINE_SPACING_MEDIUM
+
+        pdf.drawString(50, y, f"TUNTUTAN NO.: {no_tuntutan}")
+
+    y -= 20
+
     # --- PIHAK YANG MENUNTUT (Claimant) ---
-    y -= 40
+    y -= 20
     pdf.setFont("Helvetica-Bold", 10)
     if language == "en":
         pdf.drawString(50, y, "CLAIMANT")
@@ -746,21 +774,31 @@ def export_pdf():
     pdf.setFont("Helvetica", 9)
     respondent = report_data['penentang']
     if language == "en":
-        pdf.drawString(60, y, "Respondent/Company Name")
+        pdf.drawString(60, y, "Name of Respondent/Company/")
         pdf.drawString(200, y, f": {respondent.get('nama', '')}")
+        y -= 12
+        pdf.drawString(60, y, "Corporation/Organisation/Firm")
         y -= 18
-        pdf.drawString(60, y, "IC/Company Registration No.")
+
+        pdf.drawString(60, y, "Identity Card No./")
         pdf.drawString(200, y, f": {respondent.get('no_pendaftaran', '')}")
+        y -= 12
+        pdf.drawString(60, y, "Company Registration No./")
+        y -= 12
+        pdf.drawString(60, y, "Corporation/Organisation/Firm")
         y -= 18
+
         pdf.drawString(60, y, "Correspondence Address")
         pdf.drawString(200, y, f": {respondent.get('alamat_1', '')}")
         y -= 12
         pdf.drawString(200, y, f"  {respondent.get('alamat_2', '')}")
         y -= 16
-        pdf.drawString(60, y, "Phone No.")
+
+        pdf.drawString(60, y, "Telephone No.")
         pdf.drawString(200, y, f": {respondent.get('no_telefon', '')}")
         y -= 16
-        pdf.drawString(60, y, "Fax/Email")
+
+        pdf.drawString(60, y, "Fax/E-mail")
         pdf.drawString(200, y, f": {respondent.get('email', '')}")
     else:
         pdf.drawString(60, y, "Nama Penentang/Syarikat/")
@@ -867,13 +905,18 @@ def export_pdf():
         pdf.drawString(60, y, f"Pending: {summary['belum_diselesaikan']}")
         y -= 15
         pdf.drawString(60, y, f"Completed: {summary['telah_diselesaikan']}")
+        y -= 15
+        pdf.drawString(60, y, f"Overdue: {summary.get('overdue', 0)}")
+        y -= 15
     else:
         pdf.drawString(60, y, f"Jumlah Kecacatan Dilaporkan: {summary['jumlah_kecacatan']}")
         y -= 15
         pdf.drawString(60, y, f"Belum Diselesaikan: {summary['belum_diselesaikan']}")
         y -= 15
         pdf.drawString(60, y, f"Telah Diselesaikan: {summary['telah_diselesaikan']}")
-    
+        y -= 15
+        pdf.drawString(60, y, f"Telah Melebihi Tarikh Siap: {summary.get('overdue', 0)}")
+        y -= 15
     # Move y below the box
     y = box_top - box_height - 20
     
@@ -907,8 +950,9 @@ def export_pdf():
         # ===============================
         HEADER_X = 50      # a. Kecacatan ID
         LABEL_X  = 70      # Keterangan / Unit / Status
-        VALUE_X  = 120     # isi selepas :
-        TEXT_WIDTH = width - VALUE_X - 50
+        VALUE_X  = 220     # isi selepas :
+        RIGHT_MARGIN = 50
+        TEXT_WIDTH = width - VALUE_X - RIGHT_MARGIN
 
         # ===== DEFECT HEADER =====
         pdf.setFont("Helvetica-Bold", 10)
@@ -942,6 +986,25 @@ def export_pdf():
         status_text = defect["status"]
         pdf.drawString(VALUE_X, y, f": {status_text}")
         y -= 14
+
+        # ---- Reported Date ----
+        pdf.drawString(LABEL_X, y, labels.get("reported_date", "Reported Date"))
+        pdf.drawString(VALUE_X, y, f": {defect.get('reported_date', '-')}")
+        y -= 14
+
+
+        # ---- Scheduled Completion Date ----
+        pdf.drawString(LABEL_X, y, labels.get("deadline", "Scheduled Completion Date"))
+        pdf.drawString(VALUE_X, y, f": {defect.get('deadline', '-')}")
+        y -= 14
+
+        # ---- Overdue ----
+        if defect.get("overdue"):
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(LABEL_X, y, "Overdue" if language=="en" else "Melebihi Tarikh")
+            pdf.drawString(VALUE_X, y, ": YES")
+            y -= 14
+            pdf.setFont("Helvetica", 9)
 
         # ---- Keutamaan (jika ada) ----
         if defect.get("priority"):
@@ -1096,10 +1159,6 @@ def export_pdf():
             if stripped[:2] in ["A.", "B.", "C.", "D.", "E.", "F."]:
                 y -= 8    # space before each defect item
 
-            # Extra space after finishing one defect block
-            if stripped.startswith("Tarikh siap") or stripped.startswith("Tarikh dijadualkan") or stripped.startswith("Tarikh Siap"):
-                y -= 10   # space after one defect
-
             # Detect headers (LEFT ALIGN ONLY)
             is_numbered_header = (
                 stripped.startswith('1.') or
@@ -1123,37 +1182,40 @@ def export_pdf():
                 stripped.startswith('Tribunal Support Report')
             )
 
-            is_sub_item = (
-                stripped.startswith('A.') or
-                stripped.startswith('B.') or
-                stripped.startswith('C.') or
-                stripped.startswith('D.') or
-                stripped.startswith('E.') or
-                stripped.startswith('F.') or
-                stripped.startswith('a.') or
-                stripped.startswith('b.') or
-                stripped.startswith('c.') or
-                stripped.startswith('d.') or
-                stripped.startswith('e.') or
-                stripped.startswith('f.')
-            )
+            lower_line = stripped.lower()
+            SUB_ITEM_PREFIXES = tuple(f"{chr(i)}." for i in range(ord('a'), ord('z') + 1))
+            is_sub_item = lower_line.startswith(SUB_ITEM_PREFIXES)
+
 
             # Defect detail fields
-            is_defect_field = stripped.startswith((
-                "Keterangan:",
-                "Unit:",
-                "Status:",
-                "Keutamaan:",
-                "Ulasan:",
-                "Description:",
-                "Priority:",
-                "Remarks:",
-                "Tarikh siap:",
-                "Tarikh Siap:",
-                "Completion Date:",
-                "Current Status:",
-                "Scheduled Completion Date:"
-            ))
+            BASE_FIELDS = (
+                "unit:",
+                "status:",
+            )
+
+            MS_FIELDS = (
+                "keterangan:",
+                "keutamaan:",
+                "ulasan:",
+                "tarikh dilaporkan:",
+                "tarikh siap dijadualkan:",
+                "tarikh siap:",
+                "status tertunggak:",
+                "pematuhan hda (30 hari):",
+            )
+
+            EN_FIELDS = (
+                "description:",
+                "priority:",
+                "remarks:",
+                "reported date:",
+                "scheduled completion date:",
+                "overdue status:",
+                "hda compliance (30 days):",
+            )
+
+            DEFECT_FIELD_PREFIXES = BASE_FIELDS + MS_FIELDS + EN_FIELDS
+            is_defect_field = stripped.lower().startswith(DEFECT_FIELD_PREFIXES)
 
             # Font & indent
             if is_numbered_header:

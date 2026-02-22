@@ -146,7 +146,7 @@ DATA:
             for wrong, correct in TERM_FIX.items():
                 d["desc"] = d["desc"].replace(wrong, correct)
 
-    # PRIORITY NORMALISATION (JANGAN GUNA AI)
+    # PRIORITY NORMALISATION (DONT USE AI)
     PRIORITY_MAP = {
         "ms": {
             "High": "Tinggi",
@@ -220,7 +220,7 @@ TEXT:
 
     translated = res.choices[0].message.content.strip()
 
-    # ❗ AI kosong → guna report asal
+    # ❗ zero AI  → use original report
     if not translated:
         return report_text
 

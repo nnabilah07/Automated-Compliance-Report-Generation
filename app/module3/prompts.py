@@ -45,47 +45,68 @@ LANGUAGE_CONFIG = {
     }
 }
 
+def translate_report_data_to_en(report_data, include_remarks=False):
+    """
+    Convert Malay report_data structure to English structure.
+    include_remarks=True only for Homeowner role.
+    """
+    
+    # Case Info
+    case_info = report_data.get("maklumat_kes", {})
+    case_info_en = {
+        "tribunal": "Malaysia Consumer Claims Tribunal",
+        "state": case_info.get("negeri", ""),
+        "claim_number": case_info.get("no_tuntutan", ""),
+        "generated_date": case_info.get("tarikh_jana", ""),
+        "claim_amount": case_info.get("amaun_tuntutan", ""),
+        "document": "Form 1 Supporting Document"
+    }
+
+    # Statistics
+    stats = report_data.get("ringkasan_statistik", {})
+    stats_en = {
+        "total_defects": stats.get("jumlah_kecacatan", 0),
+        "pending": stats.get("belum_diselesaikan", 0),
+        "completed": stats.get("telah_diselesaikan", 0),
+        "critical": stats.get("kritikal", 0)
+    }
+
+    # Defects
+    defects = report_data.get("senarai_kecacatan", [])
+    defects_en = []
+
+    for d in defects:
+        defect_obj = {
+            "defect_id": d.get("id_kecacatan", ""),
+            "unit": d.get("unit", ""),
+            "description": d.get("keterangan", ""),
+            "reported_date": d.get("tarikh_lapor", ""),
+            "status": d.get("status", ""),
+            "deadline": d.get("tarikh_akhir", ""),
+            "overdue": "Yes" if d.get("tertunggak") == "Ya" else "No",
+            "hda_compliant": "Yes" if d.get("hda_compliant") else "No",
+            "priority": d.get("keutamaan", "")
+        }
+
+        if include_remarks:
+            defect_obj["remarks"] = d.get("ulasan", "")
+
+        defects_en.append(defect_obj)
+
+    return case_info_en, stats_en, defects_en
 
 # =================================================
 # HOMEOWNER PROMPT (BILINGUAL)
 # =================================================
 def homeowner_prompt(report_data, language="ms"):
+
     if language == "en":
-        # Translate case info to English
-        case_info = report_data.get("maklumat_kes", {})
-        case_info_en = {
-            "tribunal": "Malaysia Consumer Claims Tribunal",
-            "state": case_info.get("negeri", ""),
-            "claim_number": case_info.get("no_tuntutan", ""),
-            "generated_date": case_info.get("tarikh_jana", ""),
-            "claim_amount": case_info.get("amaun_tuntutan", ""),
-            "document": "Form 1 Supporting Document"
-        }
-        
-        # Translate statistics to English
-        stats = report_data.get("ringkasan_statistik", {})
-        stats_en = {
-            "total_defects": stats.get("jumlah_kecacatan", 0),
-            "pending": stats.get("belum_diselesaikan", 0),
-            "completed": stats.get("telah_diselesaikan", 0),
-            "critical": stats.get("kritikal", 0)
-        }
-        
-        # Translate defect list to English
-        defects = report_data.get("senarai_kecacatan", [])
-        defects_en = []
-        for d in defects:
-            defects_en.append({
-                "defect_id": d.get("id_kecacatan", ""),
-                "unit": d.get("unit", ""),
-                "description": d.get("keterangan", ""),
-                "status": d.get("status", ""),
-                "deadline": d.get("tarikh_akhir", ""),
-                "overdue": "Yes" if d.get("tertunggak") == "Ya" else "No",
-                "priority": d.get("keutamaan", ""),
-                "remarks": d.get("ulasan", "")
-            })
-        
+
+        case_info_en, stats_en, defects_en = translate_report_data_to_en(
+            report_data,
+            include_remarks=True
+        )
+
         return f"""
 This support report is prepared to support the claim submitted by
 the Claimant to the Malaysia Consumer Claims Tribunal (TTPM)
@@ -125,29 +146,35 @@ Write the report in English with these NUMBERED sections (you MUST include the n
 Support Report for Claim before the Malaysia Consumer Claims Tribunal (TTPM)
 
 1. Purpose of the Report
-[State the purpose of this report as being prepared to support the Claimant’s submission]
+[State that this report is prepared to summarise and present defect records for Tribunal consideration.]
 
-2. Summary of Reported Defects
-[Provide a summary of the reported defects based on the statistical records]
+2. Overview of Recorded Defects
+[Summarise the total number of defects, number completed, number outstanding, and any critical matters.]
 
 3. Defect List
 [List each defect in the following format:
 a. Defect ID [number]:
-   Description: [description]
-   Unit: [unit]
-   Status: [status]
-   Priority: [priority]
-   Remarks: [remarks, or state “No remarks recorded”]
+    Description: [description]
+    Unit: [unit]
+    Reported Date: [reported_date]
+    Scheduled Completion Date: [deadline]
+    Status: [status]
+    Overdue Status: [overdue]
+    HDA Compliance (30 Days): [hda_compliant]
+    Priority: [priority]
+    Remarks: [remarks, or state “No remarks recorded”]
 
 b. Defect ID [number]:
 ...]
 
 4. Defects That Have Exceeded the Deadline
-[State whether any defects have exceeded the stipulated deadline, or state
-“No defects have been reported as having exceeded the deadline.”]
+[Objectively state:
+- Whether any defects have exceeded the scheduled completion date.
+- Whether any defects are recorded as non-compliant with the 30-day HDA requirement.
+Do not attribute responsibility.]
 
 5. Formal Request from the Claimant
-[State the formal request submitted to the Tribunal]
+[State the relief or request submitted for Tribunal consideration.]
 
 6. Conclusion
 [The conclusion shall be drafted in a neutral and formal manner, stating that
@@ -168,11 +195,6 @@ replace or affect the determination or decision of the Malaysia Consumer Claims 
     
     # Default: Bahasa Malaysia
     return f"""
-Laporan sokongan ini disediakan bagi menyokong tuntutan yang dikemukakan oleh
-Pihak Yang Menuntut kepada Tribunal Tuntutan Pengguna Malaysia (TTPM)
-berhubung Tempoh Liabiliti Kecacatan (Defect Liability Period – DLP).
-
-ARAHAN PENTING:
 Laporan sokongan ini disediakan bagi menyokong tuntutan yang dikemukakan oleh
 Pihak Yang Menuntut kepada Tribunal Tuntutan Pengguna Malaysia (TTPM)
 berhubung Tempoh Liabiliti Kecacatan (Defect Liability Period – DLP).
@@ -211,22 +233,33 @@ Tulis laporan dengan format berikut:
 Laporan Sokongan Bagi Tuntutan Tribunal Tuntutan Pengguna Malaysia (TTPM)
 
 1. Tujuan Laporan
-[Terangkan tujuan laporan ini disediakan bagi menyokong tuntutan Pihak Yang Menuntut]
+[Nyatakan laporan ini disediakan bagi merumuskan dan membentangkan rekod kecacatan untuk pertimbangan Tribunal.]
 
-2. Ringkasan Kecacatan yang Dilaporkan
-[Senaraikan ringkasan statistik kecacatan]
+2. Gambaran Keseluruhan Kecacatan Direkodkan
+[Nyatakan jumlah kecacatan, jumlah yang telah diselesaikan, yang masih tertunggak dan sebarang perkara kritikal.]
 
-3. Senarai Kecacatan
-[Senaraikan setiap kecacatan dengan format:
+3. Butiran Terperinci Kecacatan
+[Senaraikan setiap kecacatan seperti berikut:
+
 a. Kecacatan ID [nombor]:
    Keterangan: [keterangan]
    Unit: [unit]
+   Tarikh Dilaporkan: [tarikh_lapor]
+   Tarikh Siap Dijadualkan: [tarikh_akhir]
    Status: [status]
+   Status Tertunggak: [tertunggak]
+   Pematuhan HDA (30 Hari): [hda_compliant]
    Keutamaan: [keutamaan]
-   Ulasan: [ulasan jika ada, jika tiada nyatakan "Tiada ulasan dikemukakan"]]
+   Ulasan: [ulasan jika ada, jika tiada nyatakan "Tiada ulasan dikemukakan"]
 
-4. Kecacatan yang Telah Melepasi Tarikh Akhir
-[Nyatakan jika ada kecacatan yang melepasi tarikh akhir, atau "Tiada kecacatan yang telah melepasi tarikh akhir yang dilaporkan."]
+b. ID Kecacatan [nombor]
+...]
+
+4. Pemerhatian Berkaitan Pematuhan dan Tarikh Akhir
+[Nyatakan secara objektif:
+- Jika terdapat kecacatan yang melepasi tarikh siap dijadualkan.
+- Jika terdapat kecacatan yang tidak mematuhi tempoh 30 hari di bawah HDA.
+Tanpa mengaitkan kesalahan atau tanggungjawab mana-mana pihak.]
 
 5. Permohonan Rasmi Pihak Yang Menuntut
 [Nyatakan permohonan rasmi kepada Tribunal]
@@ -250,38 +283,10 @@ Laporan ini dijana dengan bantuan sistem kecerdasan buatan (AI) bagi tujuan peny
 # =================================================
 def developer_prompt(report_data, language="ms"):
     if language == "en":
-        # Translate case info to English
-        case_info = report_data.get("maklumat_kes", {})
-        case_info_en = {
-            "tribunal": "Malaysia Consumer Claims Tribunal",
-            "state": case_info.get("negeri", ""),
-            "claim_number": case_info.get("no_tuntutan", ""),
-            "generated_date": case_info.get("tarikh_jana", ""),
-            "claim_amount": case_info.get("amaun_tuntutan", ""),
-            "document": "Form 1 Supporting Document"
-        }
-        
-        stats = report_data.get("ringkasan_statistik", {})
-        stats_en = {
-            "total_defects": stats.get("jumlah_kecacatan", 0),
-            "pending": stats.get("belum_diselesaikan", 0),
-            "completed": stats.get("telah_diselesaikan", 0),
-            "critical": stats.get("kritikal", 0)
-        }
-        
-        defects = report_data.get("senarai_kecacatan", [])
-        defects_en = []
-        for d in defects:
-            defects_en.append({
-                "defect_id": d.get("id_kecacatan", ""),
-                "unit": d.get("unit", ""),
-                "description": d.get("keterangan", ""),
-                "status": d.get("status", ""),
-                "deadline": d.get("tarikh_akhir", ""),
-                "overdue": "Yes" if d.get("tertunggak") == "Ya" else "No",
-                "priority": d.get("keutamaan", ""),
-                "remarks": d.get("ulasan", "")
-            })
+        case_info_en, stats_en, defects_en = translate_report_data_to_en(
+            report_data,
+            include_remarks=False
+        )
         
         return f"""
 This report is prepared by the Respondent (Developer) for compliance purposes
@@ -318,42 +323,59 @@ Write the report in English with these NUMBERED sections (you MUST include the n
 
 Compliance Report for Reference before the Malaysia Consumer Claims Tribunal (TTPM)
 
-1. Purpose of the Report
-[State that this report is prepared to fulfil the requirements of TTPM and
-to present the status of rectification works undertaken by the Developer.]
+1. Purpose of Report
+[State that this report is prepared to present the current status of rectification works undertaken during the Defect Liability Period.]
 
-2. Repair Work That Have Been Completed
-[List completed repairs with letter labels like:
-a. Defect ID [number]:
+2. Overview of Rectification Status
+[Summarise:
+- Total recorded defects
+- Number completed
+- Number outstanding
+- Any recorded overdue matters
+- Any records reflecting non-compliance with the 30-day HDA timeframe]
+
+3. Completed Rectification Works
+[List defects recorded as completed using the following structure:
+
+a. Defect ID [number]
    Description: [description]
    Unit: [unit]
-   Completion Date: [date]
+   Reported Date: [reported_date]
+   Scheduled Completion Date: [deadline]
+   HDA Compliance (30 Days): [hda_compliant]
 
-b. Defect ID [number]:
+b. Defect ID [number]
 ...]
 
-3. Repair Work That Is Still Outstanding or Delayed
-[List repair works that have not yet been completed using the following format:
-a. Defect ID [number]:
+4. Outstanding or Delayed Rectification Works
+[List defects not recorded as completed using the following structure:
+
+a. Defect ID [number]
    Description: [description]
    Unit: [unit]
+   Reported Date: [reported_date]
+   Scheduled Completion Date: [deadline]
    Current Status: [status]
-   Scheduled Completion Date: [date]
+   Overdue Status: [overdue]
+   HDA Compliance (30 Days): [hda_compliant]
 
-b. Defect ID [number]:
+b. Defect ID [number]
 ...]
 
-4. Developer's Commitment Statement
-[State the Developer’s commitment to comply with applicable requirements
-and to continue undertaking rectification works in accordance with records and schedules.]
+5. Observations on Compliance Timeframes
+[Objectively state:
+- Whether any defects are recorded as overdue.
+- Whether any defects exceed the 30-day HDA timeframe.
+Do not attribute responsibility.]
 
-5. Conclusion
-[State that this compliance report is submitted by the Respondent (Developer)
-to summarise the status of rectification works that have been completed and
-those that remain ongoing during the Defect Liability Period (DLP),
-based on internal records, for the purpose of reference and consideration
-by the Malaysia Consumer Claims Tribunal, without any admission of fault,
-liability, or legal responsibility.]
+6. Developer's Commitment Statement
+[State the Developer’s commitment to continue rectification works in accordance with available records and applicable requirements.]
+
+7. Conclusion
+[State that this compliance report summarises the status of rectification works during the Defect Liability Period,
+based strictly on internal records,
+for the purpose of Tribunal reference and consideration,
+without any admission of fault, liability, or legal responsibility.]
 
 AI Disclaimer:
 This report was generated with the assistance of an artificial intelligence (AI) system
@@ -402,41 +424,57 @@ Tulis laporan dengan format berikut:
 Laporan Pematuhan Bagi Rujukan Tribunal Tuntutan Pengguna Malaysia (TTPM)
 
 1. Tujuan Laporan
-[Nyatakan bahawa laporan ini disediakan bagi memenuhi keperluan Tribunal
-dan untuk membentangkan status pelaksanaan kerja pembaikan oleh Pemaju.]
+[Nyatakan bahawa laporan ini disediakan untuk membentangkan status kerja pembaikan sepanjang Tempoh Liabiliti Kecacatan.]
 
-2. Kerja Pembaikan yang Telah Disiapkan
-[Senaraikan kerja pembaikan yang telah diselesaikan menggunakan format berikut:
+2. Gambaran Keseluruhan Status Pembaikan
+[Nyatakan:
+- Jumlah keseluruhan kecacatan
+- Jumlah yang telah diselesaikan
+- Jumlah yang masih tertunggak
+- Jika terdapat kecacatan yang melepasi tarikh akhir
+- Jika terdapat ketidakpatuhan tempoh 30 hari di bawah HDA]
+
+3. Kerja Pembaikan yang Telah Diselesaikan
+[Senaraikan seperti berikut:
+
 a. ID Kecacatan [nombor]
    Keterangan: [keterangan]
    Unit: [unit]
-   Tarikh Siap: [tarikh]
+   Tarikh Dilaporkan: [tarikh_lapor]
+   Tarikh Siap Dijadualkan: [tarikh_akhir]
+   Pematuhan HDA (30 Hari): [hda_compliant]
 
 b. ID Kecacatan [nombor]
 ...]
 
-3. Kerja Pembaikan yang Masih Tertunggak atau Tertunda
-[Senaraikan kerja pembaikan yang belum diselesaikan menggunakan format berikut:
+4. Kerja Pembaikan yang Masih Tertunggak atau Tertunda
+[Senaraikan seperti berikut:
+
 a. ID Kecacatan [nombor]
    Keterangan: [keterangan]
    Unit: [unit]
-   Tarikh siap: [tarikh]
+   Tarikh Dilaporkan: [tarikh_lapor]
+   Tarikh Siap Dijadualkan: [tarikh_akhir]
+   Status Semasa: [status]
+   Status Tertunggak: [tertunggak]
+   Pematuhan HDA (30 Hari): [hda_compliant]
 
 b. ID Kecacatan [nombor]
 ...]
 
-4. Kenyataan Komitmen Pemaju
-[Nyatakan komitmen Pemaju untuk mematuhi keperluan yang berkenaan
-dan untuk meneruskan pelaksanaan kerja pembaikan berdasarkan rekod dan jadual yang tersedia.]
+5. Pemerhatian Berkaitan Pematuhan Tempoh
+[Nyatakan secara objektif jika terdapat kecacatan yang melepasi tarikh akhir
+atau tidak mematuhi tempoh 30 hari di bawah HDA,
+tanpa mengaitkan kesalahan mana-mana pihak.]
 
-5. Penutup
-[Nyatakan bahawa laporan pematuhan ini dikemukakan oleh Penentang (Pemaju)
-bagi merumuskan status pelaksanaan kerja pembaikan yang telah disiapkan
-dan yang masih berjalan sepanjang Tempoh Liabiliti Kecacatan
-(Defect Liability Period),
+6. Kenyataan Komitmen Pemaju
+[Nyatakan komitmen untuk meneruskan pelaksanaan kerja pembaikan berdasarkan rekod yang tersedia.]
+
+7. Penutup
+[Nyatakan bahawa laporan ini disediakan bagi merumuskan status kerja pembaikan sepanjang Tempoh Liabiliti Kecacatan,
 berdasarkan rekod dalaman yang tersedia,
-untuk tujuan rujukan dan pertimbangan oleh Tribunal Tuntutan Pengguna Malaysia,
-tanpa sebarang pengakuan kesalahan, liabiliti, atau tanggungjawab undang-undang.]
+untuk tujuan rujukan dan pertimbangan Tribunal,
+tanpa sebarang pengakuan kesalahan, liabiliti atau tanggungjawab undang-undang.]
 
 PENAFIAN AI:
 Laporan ini dijana dengan bantuan sistem kecerdasan buatan (AI)
@@ -455,37 +493,10 @@ atau keputusan Tribunal Tuntutan Pengguna Malaysia.
 def legal_prompt(report_data, language="ms"):
     if language == "en":
         # Translate case info to English
-        case_info = report_data.get("maklumat_kes", {})
-        case_info_en = {
-            "tribunal": "Malaysia Consumer Claims Tribunal",
-            "state": case_info.get("negeri", ""),
-            "claim_number": case_info.get("no_tuntutan", ""),
-            "generated_date": case_info.get("tarikh_jana", ""),
-            "claim_amount": case_info.get("amaun_tuntutan", ""),
-            "document": "Form 1 Supporting Document"
-        }
-        
-        stats = report_data.get("ringkasan_statistik", {})
-        stats_en = {
-            "total_defects": stats.get("jumlah_kecacatan", 0),
-            "pending": stats.get("belum_diselesaikan", 0),
-            "completed": stats.get("telah_diselesaikan", 0),
-            "critical": stats.get("kritikal", 0)
-        }
-        
-        defects = report_data.get("senarai_kecacatan", [])
-        defects_en = []
-        for d in defects:
-            defects_en.append({
-                "defect_id": d.get("id_kecacatan", ""),
-                "unit": d.get("unit", ""),
-                "description": d.get("keterangan", ""),
-                "status": d.get("status", ""),
-                "deadline": d.get("tarikh_akhir", ""),
-                "overdue": "Yes" if d.get("tertunggak") == "Ya" else "No",
-                "priority": d.get("keutamaan", ""),
-                "remarks": d.get("ulasan", "")
-            })
+        case_info_en, stats_en, defects_en = translate_report_data_to_en(
+            report_data,
+            include_remarks=False
+        )
         
         return f"""
 This report is prepared for the purpose of providing an objective and neutral
@@ -522,31 +533,47 @@ Write the report in English with these NUMBERED sections (you MUST include the n
 Overview Report on Defect Liability Period (DLP) Compliance
 
 1. Case Background
-[Briefly state the case information, including the claim reference number,
-claim amount, and the total number of recorded defects,
-based on the submitted documents.]
+[Briefly outline:
+- Claim reference number
+- Claim amount (if recorded)
+- Total number of recorded defects
+based strictly on submitted documentation.]
 
-2. Current Position of Defect Records
-[Briefly state the current status of defects based on records,
-including the number of defects completed and those remaining outstanding,
-without technical elaboration.]
+2. Statistical Position of Defect Records
+[State objectively:
+- Total recorded defects
+- Number completed
+- Number outstanding
+- Number recorded as overdue (if any)
+- Any record indicating non-compliance with the 30-day HDA timeframe
+without interpretation.]
 
-3. Observations on Status and Timeframes
-[State objective observations regarding defects recorded as outstanding
-or having exceeded the stipulated timeframe, if any,
-without attributing fault, liability, or responsibility to any party.]
+3. Recorded Status and Timeframe Observations
+[Provide objective observations based on records:
+For relevant defects, refer to:
+- Reported Date
+- Scheduled Completion Date
+- Current Status
+- Overdue Status
+- HDA Compliance (30 Days)
+Do not attribute responsibility or make evaluative statements.]
 
-4. Notes for Tribunal Consideration
-[State that the information is presented for the purpose of Tribunal reference
-and consideration based on available records,
-without any recommendation or determination.]
+4. Observations on Outstanding or Delayed Matters
+[State whether:
+- Any defects are recorded as exceeding scheduled completion dates.
+- Any defects remain pending beyond the 30-day reference period.
+Present this strictly as recorded data.]
 
-5. Summary
-[State that this reference report is prepared to summarise the current position
-of compliance with the Defect Liability Period (DLP)
-based on the records submitted,
-and does not contain any determination of fault, liability,
-or legal decision.]
+5. Notes for Tribunal Consideration
+[State that the information is presented for Tribunal reference
+based on available documentation,
+without any determination of liability, fault, or legal conclusion.]
+
+6. Summary
+[State that this reference report summarises the recorded position
+of compliance during the Defect Liability Period (DLP),
+based solely on submitted records,
+and does not contain any legal findings or determination.]
 
 AI Disclaimer:
 This reference report was generated with the assistance of an artificial intelligence (AI) system
@@ -597,30 +624,46 @@ Tulis laporan dengan format berikut:
 Laporan Gambaran Keseluruhan Pematuhan Tempoh Liabiliti Kecacatan (DLP)
 
 1. Latar Belakang Kes
-[Nyatakan secara ringkas maklumat kes termasuk nombor tuntutan,
-amaun tuntutan, dan jumlah kecacatan yang direkodkan,
+[Nyatakan secara ringkas:
+- Nombor rujukan tuntutan
+- Amaun tuntutan (jika direkodkan)
+- Jumlah keseluruhan kecacatan yang direkodkan
 berdasarkan dokumen yang dikemukakan.]
 
-2. Kedudukan Semasa Rekod Kecacatan
-[Nyatakan secara ringkas status kecacatan berdasarkan rekod,
-termasuk jumlah yang telah diselesaikan dan yang masih belum diselesaikan,
-tanpa perincian teknikal.]
+2. Kedudukan Statistik Rekod Kecacatan
+[Nyatakan secara objektif:
+- Jumlah keseluruhan kecacatan
+- Jumlah yang telah diselesaikan
+- Jumlah yang masih belum diselesaikan
+- Jika terdapat kecacatan yang direkodkan sebagai tertunggak
+- Jika terdapat rekod ketidakpatuhan tempoh 30 hari di bawah HDA
+tanpa membuat tafsiran.]
 
 3. Pemerhatian Berkaitan Status dan Tempoh
-[Nyatakan pemerhatian berkaitan kecacatan yang direkodkan sebagai
-masih tertunggak atau melepasi tempoh, jika ada,
-tanpa mengaitkan sebarang kesalahan atau tanggungjawab.]
+[Nyatakan pemerhatian berdasarkan rekod dengan merujuk kepada:
+- Tarikh Dilaporkan
+- Tarikh Siap Dijadualkan
+- Status Semasa
+- Status Tertunggak
+- Pematuhan HDA (30 Hari)
+tanpa mengaitkan kesalahan atau tanggungjawab mana-mana pihak.]
 
-4. Nota Untuk Pertimbangan Tribunal
-[Nyatakan bahawa maklumat ini dibentangkan untuk rujukan dan pertimbangan Tribunal
-berdasarkan rekod yang tersedia, tanpa sebarang syor atau penentuan.]
+4. Pemerhatian Berkaitan Perkara Tertunggak atau Lewat
+[Nyatakan jika terdapat kecacatan yang melepasi tarikh akhir
+atau masih belum diselesaikan melebihi tempoh rujukan 30 hari,
+berdasarkan rekod semata-mata.]
 
-5. Rumusan
+5. Nota Untuk Pertimbangan Tribunal
+[Nyatakan bahawa maklumat ini dibentangkan untuk tujuan rujukan dan
+pertimbangan Tribunal berdasarkan dokumen yang tersedia,
+tanpa sebarang penentuan kesalahan atau liabiliti.]
+
+6. Rumusan
 [Nyatakan bahawa laporan rujukan ini disediakan bagi merumuskan
 kedudukan semasa pematuhan Tempoh Liabiliti Kecacatan (DLP)
 berdasarkan rekod yang dikemukakan,
-dan tidak mengandungi sebarang penentuan kesalahan, liabiliti,
-atau keputusan undang-undang.]
+dan tidak mengandungi sebarang penentuan kesalahan,
+liabiliti atau keputusan undang-undang.]
 
 PENAFIAN AI
 Laporan rujukan ini dijana dengan bantuan sistem kecerdasan buatan (AI)

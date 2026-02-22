@@ -6,9 +6,10 @@ PDF_LABELS = {
         "page": "Halaman",
 
         # Filenames
-        "legal_filename": "laporan_sokongan_tribunal_dlp.pdf",
-        "developer_filename": "laporan_pematuhan_dlp.pdf",
-        "homeowner_filename": "borang1_pernyataan_tuntutan_dlp.pdf",
+        "legal_filename": "Laporan_Rujukan_Tribunal_DLP.pdf",
+        "developer_filename": "Laporan_Pematuhan_DLP_Responden.pdf",
+        "homeowner_filename": "Borang1_Pernyataan_Tuntutan_DLP_Penuntut.pdf",
+
 
         # HARD STATUS TRANSLATION
         "status_map": {
@@ -23,7 +24,11 @@ PDF_LABELS = {
         "defect_id": "Kecacatan ID",
         "description": "Keterangan",
         "unit": "Unit",
+        "reported_date": "Tarikh Dilaporkan",
+        "deadline": "Tarikh Siap Dijadualkan",
         "status": "Status",
+        "overdue": "Status Tertunggak",
+        "hda_compliant": "Pematuhan HDA (30 Hari)",
         "priority": "Keutamaan",
         "remarks": "Ulasan",
         "evidence": "Bukti Kecacatan"
@@ -34,9 +39,9 @@ PDF_LABELS = {
         "page": "Page",
 
         # Filenames
-        "legal_filename": "tribunal_support_report_dlp.pdf",
-        "developer_filename": "dlp_compliance_report.pdf",
-        "homeowner_filename": "form1_statement_of_claim_dlp.pdf",
+        "legal_filename": "Tribunal_Reference_Report_DLP.pdf",
+        "developer_filename": "Respondent_DLP_Compliance_Report.pdf",
+        "homeowner_filename": "Claimant_Form1_Statement_of_Claim_DLP.pdf",
 
         # ENGLISH = identity
         "status_map": {
@@ -51,7 +56,11 @@ PDF_LABELS = {
         "defect_id": "Defect ID",
         "description": "Description",
         "unit": "Unit",
+        "reported_date": "Reported Date",
+        "deadline": "Scheduled Completion Date",
         "status": "Status",
+        "overdue": "Overdue Status",
+        "hda_compliant": "HDA Compliance (30 Days)",
         "priority": "Priority",
         "remarks": "Remarks",
         "evidence": "Defect Evidence"

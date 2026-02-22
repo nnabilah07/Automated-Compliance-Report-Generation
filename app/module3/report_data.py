@@ -1,16 +1,36 @@
 # report_data.py
 from datetime import datetime
 
+# ==================================================
+# NEGERI CODE MAPPING (FOR CLAIM NUMBER FORMAT)
+# ==================================================
+
+NEGERI_CODE = {
+    "Selangor": "SGR",
+    "Johor": "JHR",
+    "Pulau Pinang": "PNG",
+    "Perak": "PRK",
+    "Kedah": "KDH",
+    "Perlis": "PLS",
+    "Negeri Sembilan": "NSN",
+    "Melaka": "MLK",
+    "Pahang": "PHG",
+    "Terengganu": "TRG",
+    "Kelantan": "KTN",
+    "Sabah": "SBH",
+    "Sarawak": "SWK",
+    "Kuala Lumpur": "WPKL",
+    "Putrajaya": "WPPJ",
+    "Labuan": "WPLB"
+}
 
 # ==================================================
 # TRIBUNAL CASE INFORMATION
-# (Static – since no login / no real filing)
 # ==================================================
 
 TRIBUNAL_CASE = {
     "tribunal": "Tribunal Tuntutan Pengguna Malaysia",
     "lokasi_tribunal": "Shah Alam",
-    "no_tuntutan": "TTPM/SGR/2026/000123",
     "tarikh_jana": datetime.now().strftime("%d-%m-%Y"),
     "amaun_tuntutan": "RM 12,000.00",
     "dokumen": "Dokumen Sokongan Borang 1",
@@ -49,12 +69,22 @@ PENENTANG = {
 # BUILD SUMMARY STATISTICS (FROM DASHBOARD STATS)
 # ==================================================
 
-def build_summary_stats(stats):
+def build_summary_stats(stats, defects=None):
+    """
+    Build structured statistical summary
+    Includes overdue count for Tribunal analysis
+    """
+
+    overdue_count = 0
+    if defects:
+        overdue_count = len([d for d in defects if d.get("is_overdue")])
+
     return {
         "jumlah_kecacatan": stats.get("total", 0),
         "belum_diselesaikan": stats.get("pending", 0),
         "telah_diselesaikan": stats.get("completed", 0),
-        "kritikal": stats.get("critical", 0)
+        "kritikal": stats.get("critical", 0),
+        "overdue": overdue_count
     }
 
 
@@ -64,38 +94,49 @@ def build_summary_stats(stats):
 
 def build_defect_list(defects, role):
     """
-    Uses ONLY fields already available in dummy_data.py
-    Builds defect list for report.
-    Remarks (ulasan) are ONLY included for Homeowner.
+    Convert raw defect data into structured report format.
+    Remarks are included ONLY for Homeowner.
     """
+
     report_defects = []
 
     for d in defects:
-        # 1️⃣ Create defect item FIRST
         defect_item = {
-            "id_kecacatan": d["id"],
-            "unit": d["unit"],
-            "keterangan": d["desc"],
-            "status": d["status"],
+            "id_kecacatan": d.get("id"),
+            "unit": d.get("unit", "-"),
+            "keterangan": d.get("desc", "-"),
+            "status": d.get("status", "-"),
+            "tarikh_lapor": d.get("reported_date", "-"),
             "tarikh_akhir": d.get("deadline", "-"),
             "tertunggak": "Ya" if d.get("is_overdue") else "Tidak",
-            "patuh_hda": "Ya" if d.get("hda_compliant") else "Tidak",
+            "hda_compliance_30_hari": "Ya" if d.get("hda_compliant") else "Tidak",
             "keutamaan": d.get("urgency", "Normal"),
-            "bukti_imej": f"evidence/defect_{d['id']}.jpg"
+            "bukti_imej": f"evidence/defect_{d.get('id')}.jpg"
         }
 
-        # 2️⃣ ONLY Homeowner gets remarks
+        # Only Homeowner sees remarks
         if role == "Homeowner" and d.get("remarks"):
-            defect_item["ulasan"] = d["remarks"]
+            defect_item["ulasan"] = d.get("remarks")
 
-        # 3️⃣ Append ONCE
         report_defects.append(defect_item)
 
     return report_defects
 
+# ==================================================
+# GENERATE CLAIM NUMBER (NO TUNTUTAN)
+# Format: TTPM/SGR/2026/000001
+# ==================================================
+
+def generate_no_tuntutan(negeri, running_no):
+    tahun = datetime.now().year
+
+    negeri_code = NEGERI_CODE.get(negeri, "UNK")  
+    # UNK = Unknown (safety fallback)
+
+    return f"TTPM/{negeri_code}/{tahun}/{running_no:06d}"
 
 # ==================================================
-# ROLE CONTEXT (VERY IMPORTANT FOR AI)
+# ROLE CONTEXT (AI GUIDANCE STRUCTURE)
 # ==================================================
 
 def build_role_context(role):
@@ -132,13 +173,28 @@ def build_role_context(role):
 # FINAL REPORT DATA (SEND THIS TO AI)
 # ==================================================
 
-def build_report_data(role, defects, stats):
+def build_report_data(role, defects, stats, running_no=None):
+
+    negeri = TRIBUNAL_CASE["negeri"]
+
+    # If no running number passed → auto generate simple number
+    if running_no is None:
+        running_no = 1   # temporary default
+        # OR use timestamp version:
+        # running_no = int(datetime.now().strftime("%H%M%S"))
+
+    no_tuntutan = generate_no_tuntutan(negeri, running_no)
+
+    tribunal_case = TRIBUNAL_CASE.copy()
+    tribunal_case["no_tuntutan"] = no_tuntutan
+    tribunal_case["kod_negeri"] = NEGERI_CODE.get(negeri, "UNK")
+
     return {
-        "maklumat_kes": TRIBUNAL_CASE,
+        "maklumat_kes": tribunal_case,
         "pihak_yang_menuntut": PIHAK_YANG_MENUNTUT,
         "penentang": PENENTANG,
         "konteks_peranan": build_role_context(role),
-        "ringkasan_statistik": build_summary_stats(stats),
+        "ringkasan_statistik": build_summary_stats(stats, defects),
         "senarai_kecacatan": build_defect_list(defects, role),
         "nota_penting": (
             "Laporan ini dijana oleh sistem sebagai dokumen sokongan "
